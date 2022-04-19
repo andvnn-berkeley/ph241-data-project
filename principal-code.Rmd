@@ -1,0 +1,96 @@
+---
+title: "PH241: Team Data Project"
+author: "Andrew Nguyen, Jessica Pak, Joanne Yang"
+date: "Spring 2022"
+output:
+  html_document:
+    #code_folding: hide
+    collapsed: true
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    keep_md: true
+    number_sections: false
+---
+
+```{r libraries, include=F}
+library(ggdag)
+library(dagitty)
+library(tidyverse)
+library(lmtest)
+library(generics)
+library(broom)
+```
+
+```{r import data, include=F}
+data <- read_csv("./datasets/diabetic_data.csv")
+```
+
+# Data Project: Readmission among Diabetes Patients
+
+## Introduction
+
+### The Data
+
+The dataset in question contains deidentified patient visit data from over 130 United States hospitals and integrated delivery networks from 1999 - 2008. The data contains 100,000 observations from diabetes-related visits, each observation being one patient visit described through 50 attributes of patient demographics, outcomes, and hospital records regarding diagnostic and treatment information. Of particular interest is an attribute of patient readmission after the hospital visit, which this analysis is built upon. The dataset is publicly available and sourced from UC Irvine’s Machine Learning Repository <https://archive.ics.uci.edu/ml/datasets/Diabetes+130-US+hospitals+for+years+1999-2008>.
+
+### The Research Question(s)
+
+Does class of diabetes medication impact the probability of hospital readmission for diabetes-related complications amongst patients with diabetes? If patients are readmitted, which class(es) of diabetes medication is associated with more rapid readmission from the initial visit (<30 days vs. >30 days). Does race influence either of these relationships of any readmission or quicker readmission?
+
+### Research Rationale
+
+Diabetes mellitus has been a worsening public health crisis in the United States, growing from 6.5 diagnosed adults to 20 million in 2010 (Gregg et al. 2014). The number of people in the United States with diabetes is projected to increase to approximately 50 million by 2050, which represents an unimaginable burden on the healthcare system in terms of pharmaceuticals and mitigative procedures, and loss to society in terms of quality of life and productivity lost (Rowley et al. 2017). Hospital readmission has been increasingly emphasized as an indicator of patient outcomes; rapid and continual readmissions put patients at risk for more complications, longer stays, higher costs, and worse outcomes (Ostling et al. 2017).
+
+It is imperative then, to not only advocate for better preventive efforts, but also to understand which treatment and adaptation options are most effective, the primary option being medication to address metabolic syndromes that contribute to the many pathways leading to diabetes). 
+
+Current treatment options for medications fall into the following types, or classes, of drugs that work in different ways to lower blood sugar (also known as blood sugar) levels: alpha-glucosidase inhibitors, biguanides, bile acid sequestrants, dopamine-2 agonists, DPP-4 inhibitors, meglitinides, SGLT2 Inhibitors, sulfonylureas, TZDs, and oral combination therapy, as well as hormone insulin (American Diabetes Association). These different classes differ in biological actions including inhibitory or stimulatory responses, target receptors, onset, peak time, and duration to mitigate blood sugar levels in the body. There are 24 generic diabetes medications recorded in our dataset that will be categorized according to their class prior to analysis. 
+
+Further, race in the United States’ society and healthcare system plays an outsized role in determining access and quality of care; therefore, understanding medication effectiveness and readmission is not complete without a secondary analysis on the impact of race/ethnicity when the data are available (Ohlson, 2020). 
+
+### Population & Sample
+
+Our target population is centered upon patients with diabetes in the United States. The data source is aggregated from a network of participating CERNER health centers that are not specifically disclosed, however, the geographic distribution is wide and could be assumed to be nationally representative: Midwest (18 hospitals), Northeast (58), South (28), and West (16). Given the geographic variety and large sample size, these data and ensuing analysis may be generalizable to the greater American population with diabetes. However, we remain mindful that this sample may be prone to forms of selection bias, where not all populations with diabetes may have access to care and therefore would not be recorded into electronic databases such as this one, maintained by CERNER Health Facts.
+
+This dataset is appropriate for our analyses because of its aforementioned large sample size, general completeness of data, inclusion of many hospital-, treatment- , and patient-related characteristics, actions, and outcomes that make causal inference and regression analysis on diabetes-related visits possible. Patients with diabetes that were seen in this network of hospitals during 1999 to 2010 were sampled and deidentified from hospitals of varying sizes and geographies; visits had to be inpatient, have a diabetic encounter, a length of say from 1 to 14 days, laboratory tests conducted, and medications administered during the visit. No other information on the dataset sampling frame or inclusion criteria were provided (Strack et al. 2014). Further, we will exclude any observations in the dataset that are missing information on covariate data that cannot be imputed (i.e. categorical covariates).
+
+## Data Cleaning
+
+## Exploratory Data Analysis (EDA)
+
+## Analysis 
+
+```{r dag, message=F, warning=F, echo=F}
+
+dag_diabetes <- dagitty('dag{
+                        type [pos = "0, 1"]
+                        ra [pos = "2, 1"]
+                        mfx [pos = "1, 1"]
+                        diag [pos = "1, 2"]
+                        race [pos = "1, 1.5"]
+                        age [pos = "0.75, 0.5"]
+                        sex [pos = "1.25, 0.5"]
+                        sev [pos = "1, 0"]
+                        
+                        type -> mfx
+                        mfx -> ra
+                        diag -> type
+                        diag -> ra
+                        race -> type
+                        race -> ra
+                        age -> mfx
+                        age -> sev
+                        sex -> mfx
+                        sev -> type
+                        sev -> ra
+}')
+
+ggdag(dag_diabetes, layout = "circle")
+
+```
+
+## Results
+
+## Conclusions
