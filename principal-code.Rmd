@@ -221,7 +221,7 @@ diabetesfinal2$age = as.factor(diabetesfinal2$age)
 diabetesfinal2$gender = as.factor(diabetesfinal2$gender)
 
 str(diabetesfinal1)
-str(diabetesfinal2)
+head(diabetesfinal2)
 ```
 
 
