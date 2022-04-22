@@ -58,6 +58,109 @@ This dataset is appropriate for our analyses because of its aforementioned large
 
 ## Data Cleaning
 
+```{r drug class indicator, warning=F, message=F, echo=F}
+diabetes_clean <- data
+
+# Creating drug class indicator variables. There are 24 individual medications across different drug classes
+
+#alpha-glucosidase inhibitor
+diabetes_clean['acarbose'] = ifelse(diabetes['acarbose'] != 'No', 1, 0)
+diabetes_clean['miglitol'] = ifelse(diabetes['miglitol'] != 'No', 1, 0)
+#biguanide
+diabetes_clean['metformin'] = ifelse(diabetes['metformin'] != 'No', 1, 0)
+#hormone
+diabetes_clean['insulin'] = ifelse(diabetes['insulin'] != 'No', 1, 0)
+#diuretic
+diabetes_clean['examide'] = ifelse(diabetes['examide'] != 'No', 1, 0)
+#DPP-4 inhibitor
+diabetes_clean['citoglipton'] = ifelse(diabetes['citoglipton'] != 'No', 1, 0) #sitagliptin??? citoglipton DNE
+#meglitinide
+diabetes_clean['repaglinide'] = ifelse(diabetes['repaglinide'] != 'No', 1, 0)
+diabetes_clean['nateglinide'] = ifelse(diabetes['nateglinide'] != 'No', 1, 0)
+#sulfonylureas
+diabetes_clean['glimepiride'] = ifelse(diabetes['glimepiride'] != 'No', 1, 0)
+diabetes_clean['glipizide'] = ifelse(diabetes['glipizide'] != 'No', 1, 0)
+diabetes_clean['tolazamide'] = ifelse(diabetes['tolazamide'] != 'No', 1, 0)
+diabetes_clean['tolbutamide'] = ifelse(diabetes['tolbutamide'] != 'No', 1, 0)
+diabetes_clean['glyburide'] = ifelse(diabetes['glyburide'] != 'No', 1, 0)
+diabetes_clean['chlorpropamide'] = ifelse(diabetes['chlorpropamide'] != 'No', 1, 0)
+diabetes_clean['acetohexamide'] = ifelse(diabetes['acetohexamide'] != 'No', 1, 0)
+#thiazolidinedione(glitazone)
+diabetes_clean['pioglitazone'] = ifelse(diabetes['pioglitazone'] != 'No', 1, 0)
+diabetes_clean['rosiglitazone'] = ifelse(diabetes['rosiglitazone'] != 'No', 1, 0)
+diabetes_clean['troglitazone'] = ifelse(diabetes['troglitazone'] != 'No', 1, 0)
+#combo
+diabetes_clean['glyburide.metformin'] = ifelse(diabetes['glyburide.metformin'] != 'No', 1, 0)
+diabetes_clean['glipizide.metformin'] = ifelse(diabetes['glipizide.metformin'] != 'No', 1, 0)
+diabetes_clean['glimepiride.pioglitazone'] = ifelse(diabetes['glimepiride.pioglitazone'] != 'No', 1, 0)
+diabetes_clean['metformin.rosiglitazone'] = ifelse(diabetes['metformin.rosiglitazone'] != 'No', 1, 0)
+diabetes_clean['metformin.pioglitazone'] = ifelse(diabetes['metformin.pioglitazone'] != 'No', 1, 0)
+```
+
+```{r agg drug class, message=F, warning=F, echo=F}
+
+# Aggregating medication into overarching drug classes (if there is at least one drug in the class prescribed, then the observation is true for that drug class). There are 6 drug classes in all.
+
+# Drug Class
+diabetes_clean2 <- diabetes_clean
+diabetes_clean2['a_glucosidase.inhibitor'] = ifelse(diabetes_clean['acarbose'] == 1 | diabetes_clean['miglitol'] == 1, 1, 0)
+diabetes_clean2['biguanide'] = ifelse(diabetes_clean['metformin'] == 1, 1, 0)
+diabetes_clean2['hormone'] = ifelse(diabetes_clean['insulin'] == 1, 1, 0)
+diabetes_clean2['diuretic'] = ifelse(diabetes_clean['examide'] == 1, 1, 0)
+diabetes_clean2['ddp4.inhibitor'] = ifelse(diabetes_clean['citoglipton'] == 1, 1, 0)
+diabetes_clean2['meglitinide'] = ifelse(diabetes_clean['repaglinide'] == 1 | diabetes['nateglinide'] == 1, 1, 0)
+diabetes_clean2['sulfonylureas'] = ifelse(diabetes_clean['glimepiride'] == 1 | 
+                                           diabetes_clean['glipizide'] == 1 | 
+                                           diabetes_clean['tolazamide'] == 1| 
+                                           diabetes_clean['tolbutamide'] == 1 | 
+                                           diabetes_clean['glyburide'] == 1 |
+                                           diabetes_clean['chlorpropamide'] == 1 |
+                                           diabetes['acetohexamide'] == 1, 1, 0)
+diabetes_clean2['glitazone'] = ifelse(diabetes_clean['pioglitazone'] == 1 | 
+                                           diabetes_clean['rosiglitazone'] == 1 | 
+                                           diabetes_clean['troglitazone'] == 1, 1, 0)
+diabetes_clean2['combo'] = ifelse(diabetes_clean['glyburide.metformin'] == 1 | 
+                                           diabetes_clean['glipizide.metformin'] == 1 | 
+                                           diabetes_clean['glimepiride.pioglitazone'] == 1| 
+                                           diabetes_clean['metformin.rosiglitazone'] == 1 | 
+                                           diabetes_clean['metformin.pioglitazone'] == 1, 1, 0)
+head(diabetes_clean2)
+```
+
+```{r non-drug cov, message=F, warning=F, echo=F}
+# Cleaning non-drug covariates (hospital, treatment, and personal characteristics)
+
+diabetes_clean2['dischargestatus'] = ifelse(diabetes_clean2['discharge_disposition_id'] == 1, 'Home', 'Otherwise')
+diabetes_clean2['admissionsource'] = ifelse(diabetes_clean2['admission_source_id'] == 7, 'ER', ifelse(diabetes_clean2['admission_source_id'] == 1, 'Referral', 'Otherwise'))
+diabetes$diag_1 = as.numeric(diabetes_clean2$diag_1)
+diabetes_clean2['diagnosis'] = ifelse(diabetes_clean2$diag_1 %in% c(390:459, 785), 'Circulatory', 
+                                      ifelse(diabetes_clean2$diag_1 %in% c(460:519, 786), 'Respiratory',
+                                             ifelse(diabetes_clean2$diag_1 %in% c(520:579, 787), 'Digestive', 
+                                                    ifelse(between(diabetes_clean2$diag_1, 250, 250.999), 'Diabetes',
+                                                           ifelse(diabetes_clean2$diag_1 %in%c(800:999), 'Injury', 
+                                                                  ifelse(diabetes_clean2$diag_1 %in% c(710:739), 'Musculoskeletal',
+                                                                         ifelse(diabetes_clean2$diag_1 %in% c(580:629, 788), 'Genitourinary',
+                                                                                ifelse(diabetes_clean2$diag_1 %in% c(140:239, 780:782, 784, 790:799,240:249, 251:279, 680:709, 001:139, 290:319), 'Neoplasms', 'Other'))))))))
+```
+
+```{r clean dataset, warning=F, message=F, echo=F}
+
+# Diabetes clean data; num_medications is # distinct drugs administered, not specific to diabetic medications
+diabetesfinal <- select(diabetes_clean2, readmitted, a_glucosidase.inhibitor, biguanide, hormone, diuretic, ddp4.inhibitor, meglitinide, sulfonylureas, glitazone, combo, race, diagnosis, time_in_hospital, num_medications, dischargestatus, admissionsource, age, gender)
+
+# Factoring categorical variables.
+diabetesfinal$readmitted = as.factor(diabetesfinal$readmitted)
+diabetesfinal$race = as.factor(diabetesfinal$race)
+diabetesfinal$diagnosis = as.factor(diabetesfinal$diagnosis)
+diabetesfinal$dischargestatus = as.factor(diabetesfinal$dischargestatus)
+diabetesfinal$admissionsource = as.factor(diabetesfinal$admissionsource)
+diabetesfinal$age = as.factor(diabetesfinal$age)
+diabetesfinal$gender = as.factor(diabetesfinal$gender)
+
+str(diabetesfinal)
+```
+
+
 ## Exploratory Data Analysis (EDA)
 
 ## Analysis 
