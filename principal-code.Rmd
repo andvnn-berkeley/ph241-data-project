@@ -182,7 +182,7 @@ diabetes_clean2['gender'] <- ifelse(diabetes_clean2['gender'] == "Male", 1, 0)
 # outcome variable - binary: yes readmission or no readmission
 diabetes_clean2['readmit_yesno'] = ifelse(diabetes_clean2['readmitted'] != 'NO', 1, 0)
 
-# 2nd dataset with other 2nd outcome variable: only looking at >30 or <30 days
+# 2nd dataset with other 2nd outcome variable: only looking at 1. >30 or 0. <30 days
 diabetes_clean3 <- diabetes_clean2 %>% 
   filter(readmitted != 'NO') %>% 
   mutate(readmit_30days = ifelse(readmitted == ">30", 1, 0))
@@ -226,6 +226,130 @@ head(diabetesfinal2)
 
 
 ## Exploratory Data Analysis (EDA)
+
+Running two logistic regression models blah blah write something here about running diagnostic tests
+
+Assumptions to check for in a logistic regression:
+
+**1. Outcome is a binary or dichotomous variable**
+```{r assumption 1, echo = F}
+# binary outcome variable
+table(diabetesfinal1$readmit_yesno)
+table(diabetesfinal2$readmit_30days)
+```
+
+note: had to delete diagnosis from model (missing values, need to deal with later)
+
+**2. Linearity between the log odds of the outcome and each continuous predictor variables**
+```{r}
+# continuous variables: time_in_hospital, num_medications, (should we also consider age as "continuous" variable?)
+
+# getting outcome probabilities: 
+mod1 <- glm(readmit_yesno ~ biguanide+ hormone+ race+time_in_hospital+ num_medications+ dischargestatus+ admissionsource+ age+ gender, data = diabetesfinal1, family = "binomial")
+mod2 <- glm(readmit_30days ~ biguanide+ hormone+ race+time_in_hospital+ num_medications+ dischargestatus+ admissionsource+ age+ gender, data = diabetesfinal2, family = "binomial")
+
+prob1 <- predict(mod1, type = "response")
+prob2 <- predict(mod2, type = "response")
+
+# continuous predictor variables
+cont_var1 <- diabetesfinal1 %>%
+  select(time_in_hospital, num_medications) 
+
+cont_var2 <- diabetesfinal2 %>%
+  select(time_in_hospital, num_medications) 
+
+pred1 <- colnames(cont_var1)
+pred1 <- colnames(cont_var2)
+
+# Bind the logit and tidying the data for plot
+cont_var1 <- cont_var1 %>%
+  mutate(logit = log(prob1/(1-prob1))) %>%
+  gather(key = "predictors", value = "predictor.value", -logit)
+
+cont_var2 <- cont_var2 %>%
+  mutate(logit = log(prob2/(1-prob2))) %>%
+  gather(key = "predictors", value = "predictor.value", -logit)
+
+# plotting linearity (might want to run tests of linearity instead ??)
+ggplot(cont_var1, aes(logit, predictor.value))+
+  geom_point(size = 0.5, alpha = 0.5) +
+  #geom_smooth(method = "loess") + 
+  theme_bw() + 
+  facet_wrap(~predictors, scales = "free_y")
+
+ggplot(cont_var2, aes(logit, predictor.value))+
+  geom_point(size = 0.5, alpha = 0.5) +
+  #geom_smooth(method = "loess") + 
+  theme_bw() + 
+  facet_wrap(~predictors, scales = "free_y")
+
+# lol the outcomes are hella wacky :o time in hospital might be a discrete varible but generally there's a linear relationship for num meds???
+```
+**3. No influential values (extreme values or outliers) in the continuous predictors**
+
+we might need to explore another way to show this because the graphing way takes a really long time to run code
+
+```{r assumption 3, echo =F}
+# # broom package
+# mod1.data <- augment(mod1) %>% 
+#   mutate(index = 1:n()) 
+# 
+# mod2.data <- augment(mod2) %>% 
+#   mutate(index = 1:n()) 
+# 
+# mod1.data$readmit_yesno <- as.factor(mod1.data$readmit_yesno)
+# mod2.data$readmit_30days <-  as.factor(mod2.data$readmit_30days)
+# # to check for outlier with standardized residual plot
+# mod1.data %>% 
+#   ggplot(aes(index, .std.resid)) + 
+#   geom_point(aes(color = readmit_yesno), alpha = .5) +
+#   scale_colour_manual(labels = c("Readmittance", "No Readmittance"),  values = c("red", "black")) +
+#   theme_bw()
+# 
+# mod2.data %>% 
+#   ggplot(aes(index, .std.resid)) + 
+#   geom_point(aes(color = readmit_30days), alpha = .5) +
+#   scale_colour_manual(labels = c("> 30 days", "<30 days"),  values = c("red", "black")) +
+#   theme_bw()
+# 
+# # diagnostic test for influential points with cook's distance plot:
+# cooks_crit = 0.5
+# influence_cooks1 <- cooks.distance(mod1)
+# df1 <- data.frame(obs = names(influence_cooks1),
+#                  cooks = influence_cooks1)
+# ggplot(df1, aes(y = cooks, x = obs)) +
+#   geom_point() +
+#   geom_hline(yintercept = cooks_crit, linetype="dashed") +
+#   labs(title = "Cook's Distance",
+#        subtitle = "Potential Influential Observations",
+#        x = "Observation Number",
+#        y = "Cook's")
+# 
+# influence_cooks2 <- cooks.distance(mod2)
+# df2 <- data.frame(obs = names(influence_cooks2),
+#                  cooks = influence_cooks2)
+# ggplot(df2, aes(y = cooks, x = obs)) +
+#   geom_point() +
+#   geom_hline(yintercept = cooks_crit, linetype="dashed") +
+#   labs(title = "Cook's Distance",
+#        subtitle = "Potential Influential Observations",
+#        x = "Observation Number",
+#        y = "Cook's")
+# 
+# 
+# # which points may be influential
+# cont_var1[which(abs(influence_cooks1) > cooks_crit),]
+# 
+# cont_var2[which(abs(influence_cooks2) > cooks_crit),]
+```
+**4. No high intercorrelations (i.e. multicollinearity) among the predictors**
+```{r assumption 4, echo =F}
+library(caret)
+car::vif(mod1)
+car::vif(mod2)
+```
+no mutlicollinearity:  VIF values below 5
+
 
 ## Analysis 
 
