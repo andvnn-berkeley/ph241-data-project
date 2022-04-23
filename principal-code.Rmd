@@ -227,9 +227,105 @@ head(diabetesfinal2)
 
 ## Exploratory Data Analysis (EDA)
 
-Running two logistic regression models blah blah write something here about running diagnostic tests
+With these data, we are interested in understanding if there are any differences in diabetes patient outcomes across diabetes medication. The outcome afforded by the data collected are categorical readmission statuses (<30 days, >30 days, and no readmission). Since these outcomes are categorical, we look towards logistic regression to model an observation (patient's) probability to being readmitted based on type of medication and other personal and hospital characteristics.
 
-Assumptions to check for in a logistic regression:
+Since there are three categories for the outcome variable, we plan on building two models from the same dataset:
+
+- Model 1: Relationship between medication type and readmission at all (no readmission vs. all readmission)
+- Model 2: Relationship between medication type and time until readmission (<30 days vs. >30 days)
+
+### Data Missingness
+
+```{r missingness, warning=F, message=F, echo=F}
+#checking for missing observations for all variables dataset
+sapply(diabetesfinal1, function(x) sum(is.na(x)))
+
+#proportion of observations missing diagnosis value
+sum(is.na(diabetesfinal1$diagnosis)) / nrow(diabetesfinal1) *100
+
+```
+After cleaning our data, we see that the primary diagnosis field sees some missing values (from the original dataset). This is problematic for later analysis, so we explore options to address the missingness (e.g. imputation or subsetting, among other options). Although it is a small proportion of the entire dataset (1.64%), we explore the covariate distribution of diagnosis missingness through comparative propensity scoring. In this, we utilize logistic regression to find the probability of missing given the covariates that we understand could affect receiving a diagnosis, elucidated by the DAG below. 
+
+```{r dag diag, message=F, warning=F, echo=F}
+
+dag_diag <- dagitty('dag{
+                        rcv_diag [pos = "2, 1"]
+                        time [pos = "0, 1"]
+                        adm_src [pos = "0, 2"]
+                        race [pos = "0, 0"]
+                        
+                        time -> rcv_diag
+                        adm_src -> rcv_diag
+                        race -> rcv_diag
+}')
+
+ggdag(dag_diag, layout = "circle")
+
+```
+
+```{r tx prop score 1, message=F, warning=F}
+diag_missing <- diabetesfinal1 %>% mutate(missing_diag = ifelse(is.na(diabetesfinal1$diagnosis) == T, 1, 0))
+
+#propensity model with all terms directly or indirectly affecting treatment, not including interaction terms
+prop_tx <- glm(missing_diag ~  admissionsource + time_in_hospital + race, family = "binomial", data = diag_missing)
+#propensity model with all terms directly or indirectly affecting treatment, including interaction terms
+prop_tx_int <- glm(missing_diag ~  admissionsource*time_in_hospital*race, family = "binomial", data = diag_missing)
+
+#model summaries
+tidy(prop_tx)
+tidy(prop_tx_int)
+
+#likelihood ratio test between two models
+lrtest(prop_tx, prop_tx_int)
+```
+
+Since the propensity score model with the interaction terms is deemed to explain more of the data's variation to a significant degree via the likelihood ratio test, we build the propensity scores for missing diagnosis from that model over the parsimonious model without interaction terms.
+
+Here, we build the propensity scores and visualize the distribution of propensity across groups of missing and non-missing diagnosis.
+```{r tx prop score 2, message=F, warning=F}
+#creating column named "prop" for propensities of receiving diagnosis
+diag_missing['prop'] <- predict(prop_tx, type="response", data=diag_missing)
+
+#mutate new column in df for binary string categories of treatment
+ggplot(data = diag_missing %>% mutate(Diagnosis_Cat = ifelse(missing_diag == 1, "Undiagnosed (1)", "Diagnosed (0)")), 
+       aes(x = prop, 
+           #color code by treatment group
+           group=Diagnosis_Cat, 
+           fill = Diagnosis_Cat, 
+           color = Diagnosis_Cat)) +
+    geom_density(alpha = 0.25) + 
+    labs(x = "Propensity of receiving diagnosis based on covariates",
+         y = "Density",
+         fill = "Category of Diagnosis",
+         color = "Category of Diagnosis") +
+    theme_classic() +
+    theme(legend.position="top") +
+    scale_y_continuous(expand = c(0,0)) +
+    scale_x_continuous(expand = c(0,0))
+```
+
+From the density plot of propensity scores, we do see that a strong majority of observations that did receive diagnoses have similar covariate distribution such that it was strongly predicted that they would receive one (with propensity scores approaching 0). Among those who didn't receive a diagnosis, the covariate distribution was less concentrated in the very low propensity score region, which may be of slight concern. However, the gulf between densities across groups at propensity ~ 0 is likely due to the very small number of missng observations among a large dataset. We would be more concerned if there were no overlap between the two groups in terms of propensity for not receiving a diagnosis. Therefore, we feel comfortable with proceeding with the analysis after filtering out observations that did not receive a diagnosis. 
+
+```{r missingness 2, message=F, warning=F, echo=F}
+#filtering out missing observations 
+diabetesfinal1 <- diabetesfinal1 %>% filter(is.na(diagnosis) == F)
+diabetesfinal2 <- diabetesfinal2 %>% filter(is.na(diagnosis) == F)
+
+#checking missingness across all columns
+sapply(diabetesfinal1, function(x) sum(is.na(x))) 
+```
+
+### Model Assumptions
+
+Logistic regression does not require many of the assumptions and data conditions that linear regression requires, including a linear relationship between the independent and dependent variable, normal distribution of the residuals, constant variance of the dependent variable, and measurement of the dependent variable on an interval/ratio scale.
+
+However, these assumptions about the data are made:
+
+- Dependent variable is binary: this assumption is fulfilled by splitting the analysis into two models, described above.
+- Linearity between the log odds of the outcome and each continuous predictor variables
+- Observations are independent of one another: While it is possible that knowing that more than one patient(s) share the same family history, household, genetics, and/or neighborhood (among other observable characteristics) may influence one's perception on their outcomes based on prior patients, this dataset did not observe such characteristics and it is reasonably assumed that patient data are independent and uninfluenced of one another.
+- Little or no multicollinearity among independent variables: this assumption was checked by looking at Variance Inflation Factor (VIF). 
+- No extreme outliers: outliers were identified and removed using a Cook's Distance plot (shown); values that were 4 times over the mean Cook's Distance were excluded (in red).
 
 **1. Outcome is a binary or dichotomous variable**
 ```{r assumption 1, echo = F}
@@ -238,7 +334,7 @@ table(diabetesfinal1$readmit_yesno)
 table(diabetesfinal2$readmit_30days)
 ```
 
-note: had to delete diagnosis from model (missing values, need to deal with later)
+note: had to delete diagnosis from model (missing values, need to deal with later) (should be fixed, see missingness section above)
 
 **2. Linearity between the log odds of the outcome and each continuous predictor variables**
 ```{r}
@@ -342,6 +438,7 @@ we might need to explore another way to show this because the graphing way takes
 # 
 # cont_var2[which(abs(influence_cooks2) > cooks_crit),]
 ```
+
 **4. No high intercorrelations (i.e. multicollinearity) among the predictors**
 ```{r assumption 4, echo =F}
 library(caret)
