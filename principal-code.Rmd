@@ -551,7 +551,7 @@ summary(model1)
 #fit model 2 for readmission <30 days vs. readmission >30 days
 model2 <- clogit(as.numeric(readmit_30days) ~ medication + race + 
                 diagnosis + time_in_hospital + 
-                num_medxications + dischargestatus + 
+                num_medications + dischargestatus + 
                 admissionsource + strata(subclass),
               data = diabetes_matched2, method = "exact")
 
