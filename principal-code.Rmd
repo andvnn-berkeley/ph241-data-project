@@ -23,6 +23,7 @@ library(lmtest)
 library(generics)
 library(broom)
 library(caret)
+library(MatchIt)
 ```
 
 ```{r import data, include=F}
@@ -173,7 +174,7 @@ diabetes_clean2['admissionsource'] <- ifelse(diabetes_clean2['admission_source_i
 
 diabetes_clean2$diag_1 <- as.numeric(diabetes_clean2$diag_1)
 
-# 1 = circulatory, 2 = respiratory, 3 = digestive, 4 = diabetess, 5= injury, 6 = muscoskeletal, 7 = genitourinary, 8= neoplasms, 9 = other
+# 1 = circulatory, 2 = respiratory, 3 = digestive, 4 = diabetes, 5= injury, 6 = musculoskeletal, 7 = genitourinary, 8= neoplasms, 9 = other
 diabetes_clean2['diagnosis'] <- ifelse(diabetes_clean2$diag_1 %in% c(390:459, 785), 1, 
                                       ifelse(diabetes_clean2$diag_1 %in% c(460:519, 786), 2,
                                              ifelse(diabetes_clean2$diag_1 %in% c(520:579, 787), 3, 
@@ -386,32 +387,91 @@ ggdag(dag_diabetes, layout = "circle") +
 
 ### Positivity analysis
 
-Before we fit our model, we want to examine whether the treated and non-treated groups are exchangeable, or that they both would have had comparable probabilities of being treated (i.e. being prescribed metformin). We do this by modeling the probability of receiving treatment as a function of the observed covariates that can be associated with treatment type. Of course, this method will only allow us to examine treatment group balance among observed covariates (instead of all possible covariates.).
+Before we fit our model, we want to examine whether the treated and non-treated groups are exchangeable, or that they both would have had comparable probabilities of being treated (i.e. being prescribed metformin). We do this by modeling the probability of receiving treatment as a function of the observed covariates that can be associated with treatment type. We want to include all predictors of the exposure and none of the effects of the exposure. Of course, this method will only allow us to examine treatment group balance among observed covariates (instead of all possible covariates.).
 
+We decide to build propensity scores as a function of these covariates below, which may reflect treatment differences as a result of patient-provider social dynamics and severity of disease:
+
+- race
+- diagnosis
+- time in hospital
+- age
+
+It may be argued that time in hospital could be related to the effect of the treatment rather than determining it. 
 
 ```{r positivity analysis, echo = F}
 
 
-
 #propensity model with all terms directly or indirectly affecting treatment, not including interaction terms
-pos_logit <- glm(medication ~ race + diagnosis + time_in_hospital + num_medications + dischargestatus + admissionsource + age + gender, family = "binomial", data = diabetesfinal1)
+pos_logit <- glm(medication ~ race + diagnosis + time_in_hospital + age, family = "binomial", data = diabetesfinal1)
 
+pos_logit2 <- glm(medication ~ race + diagnosis + time_in_hospital + age, family = "binomial", data = diabetesfinal2)
 #propensity model with all terms directly or indirectly affecting treatment, including interaction terms (won't run b/c it's probably too many terms)
 #pos_logit_int <- glm(medication ~ race*diagnosis*time_in_hospital*num_medications*dischargestatus*admissionsource*age*gender, family = "binomial", data = diabetesfinal1)
 
 #model summaries
 tidy(pos_logit)
+tidy(pos_logit2)
 #tidy(pos_logit_int)
 
 #likelihood ratio test between two models
 #lrtest(pos_logit, pos_logit_int)
 
-#creating column named "prop" for propensities of receiving diagnosis
-diabetes_temp <- diabetesfinal1
 
-diabetes_temp['prop'] <- predict(pos_logit, type="response", data=diabetesfinal1)
+diabetesfinal1['prop'] <- predict(pos_logit, type="response", data=diabetesfinal1)
+diabetesfinal2['prop'] <- predict(pos_logit2, type="response", data=diabetesfinal2)
 
 #mutate new column in df for binary string categories of treatment
+ggplot(data = diabetesfinal1 %>% mutate(Medication_Type = ifelse(medication == 1, "Metformin (1)", "Insulin (0)")), 
+       aes(x = prop, 
+           #color code by treatment group
+           group=Medication_Type, 
+           fill = Medication_Type, 
+           color = Medication_Type)) +
+    geom_density(alpha = 0.25) + 
+    labs(x = "Propensity of receiving treatment based on covariates",
+         y = "Density",
+         fill = "Category of treatment",
+         color = "Category of treatment",
+         title = "Figure (x): Propensity of receiving treatment before exclusion") +
+    theme_classic() +
+    theme(legend.position="top") +
+    scale_y_continuous(expand = c(0,0)) +
+    scale_x_continuous(expand = c(0,0)) +
+  theme(plot.title = element_text(size=12, face="bold"))
+
+ggplot(data = diabetesfinal2 %>% mutate(Medication_Type = ifelse(medication == 1, "Metformin (1)", "Insulin (0)")), 
+       aes(x = prop, 
+           #color code by treatment group
+           group=Medication_Type, 
+           fill = Medication_Type, 
+           color = Medication_Type)) +
+    geom_density(alpha = 0.25) + 
+    labs(x = "Propensity of receiving treatment based on covariates",
+         y = "Density",
+         fill = "Category of treatment",
+         color = "Category of treatment",
+         title = "Figure (x): Propensity of receiving treatment before exclusion") +
+    theme_classic() +
+    theme(legend.position="top") +
+    scale_y_continuous(expand = c(0,0)) +
+    scale_x_continuous(expand = c(0,0)) +
+  theme(plot.title = element_text(size=12, face="bold"))
+```
+
+With the density plot of propensity scores above, we do see some violation of positivity, where those who were prescribed insulin (based on covariate distribution) would have had a very low propensity to being prescribed metformin, and vice versa. Thus, the populations in both tails of treatment propensity may not be exchangeable. We first subset the dataset to exclude observations in these tails (2.5% on each tail). 
+
+We can address this my matching on propensity score with replacement, where observations across treatment groups are matched with a peer observation within 0.2 units of propensity. Matching is done with replacement as there is not an equal number of those prescribed the treatment versus not across the entire range of propensity; the final sample of 21160 observations has a balanced treatment distribution (55.4% having received the control medication insulin).
+
+
+```{r matching, echo = F}
+#exclude observations in each tail
+diabetes_temp <- diabetesfinal1[diabetesfinal1$prop<quantile(diabetesfinal1$prop[diabetesfinal1$medication==1], probs=.975) & 
+                     diabetesfinal1$prop>quantile(diabetesfinal1$prop[diabetesfinal1$medication==0], probs=.025),]
+
+diabetes_temp2 <- diabetesfinal2[diabetesfinal2$prop<quantile(diabetesfinal2$prop[diabetesfinal2$medication==1], probs=.975) & 
+                     diabetesfinal2$prop>quantile(diabetesfinal2$prop[diabetesfinal2$medication==0], probs=.025),]
+
+#graph new propensity distribution
 ggplot(data = diabetes_temp %>% mutate(Medication_Type = ifelse(medication == 1, "Metformin (1)", "Insulin (0)")), 
        aes(x = prop, 
            #color code by treatment group
@@ -422,24 +482,113 @@ ggplot(data = diabetes_temp %>% mutate(Medication_Type = ifelse(medication == 1,
     labs(x = "Propensity of receiving treatment based on covariates",
          y = "Density",
          fill = "Category of treatment",
-         color = "Category of treatment") +
+         color = "Category of treatment",
+         title = "Figure (x): Propensity of receiving treatment after exclusion") +
     theme_classic() +
     theme(legend.position="top") +
     scale_y_continuous(expand = c(0,0)) +
-    scale_x_continuous(expand = c(0,0))
+    scale_x_continuous(expand = c(0,0)) +
+  theme(plot.title = element_text(size=12, face="bold"))
+
+ggplot(data = diabetes_temp2 %>% mutate(Medication_Type = ifelse(medication == 1, "Metformin (1)", "Insulin (0)")), 
+       aes(x = prop, 
+           #color code by treatment group
+           group=Medication_Type, 
+           fill = Medication_Type, 
+           color = Medication_Type)) +
+    geom_density(alpha = 0.25) + 
+    labs(x = "Propensity of receiving treatment based on covariates",
+         y = "Density",
+         fill = "Category of treatment",
+         color = "Category of treatment",
+         title = "Figure (x): Propensity of receiving treatment after exclusion") +
+    theme_classic() +
+    theme(legend.position="top") +
+    scale_y_continuous(expand = c(0,0)) +
+    scale_x_continuous(expand = c(0,0)) +
+  theme(plot.title = element_text(size=12, face="bold"))
+
+#matching observations across treatment groups by propensity score, within 0.2 units of probability of one another, with replacement
+matched_list <- matchit(formula = medication ~  prop, 
+                        data = diabetes_temp, 
+                        method = "nearest", 
+                        replace=TRUE,
+                        caliper=0.2, 
+                        reestimate=FALSE,
+                        ratio = 10)
+
+matched_list2 <- matchit(formula = medication ~  prop, 
+                        data = diabetes_temp2, 
+                        method = "nearest", 
+                        replace=TRUE,
+                        caliper=0.2, 
+                        reestimate=FALSE,
+                        ratio = 5)
+
+summary(matched_list, un = FALSE)
+plot(matched_list, type = "jitter", interactive = FALSE)
+diabetes_matched <- match.data(matched_list)
+
+summary(matched_list2, un = FALSE)
+plot(matched_list2, type = "jitter", interactive = FALSE)
+diabetes_matched2 <- match.data(matched_list2)
 ```
 
-
-
-
-In alignment with the DAG above, we fit out logistic regression models accordingly.
+After matching on propensity score, we fit our logistic regression models in alignment with our causal DAG. 
 
 ```{r analysis 1, echo = F}
+#fit model 1 for readmission vs. no readmission
+model1 <- glm(readmit_yesno ~ medication + race + 
+                diagnosis + time_in_hospital + 
+                num_medications + dischargestatus + 
+                admissionsource + age + gender, 
+              family = "binomial", 
+              data = diabetes_matched)
 
-model1 <- glm(readmit_yesno ~ )
+summary(model1)
 
+#fit model 2 for readmission <30 days vs. readmission >30 days
+model2 <- glm(readmit_30days ~ medication + race + 
+                diagnosis + time_in_hospital + 
+                num_medications + dischargestatus + 
+                admissionsource + age + gender, 
+              family = "binomial", 
+              data = diabetes_matched2)
+
+summary(model2)
 ```
 
+We also perform a sensitivity analysis with the dataset that excludes the tails of propensity scores but relies on weighting instead of matching on propensity scores. This may be an appropriate alternative approach given relative comparability in covariate distribution for a majority of the sample across the treatment groups.
+
+```{r sensitivity, echo = F}
+#create propensity weights; control weights = 1/1-prop; treatment weights = 1/prop
+diabetesfinal1 <- diabetesfinal1 %>%
+  mutate(weights = ifelse(medication == 0, 1/1-prop, 1/prop))
+
+diabetesfinal2 <- diabetesfinal2 %>%
+  mutate(weights = ifelse(medication == 0, 1/1-prop, 1/prop))
+
+#fit model 1 for readmission vs. no readmission using propensity weights
+model1_sens <- glm(readmit_yesno ~ medication + race + 
+                diagnosis + time_in_hospital + 
+                num_medications + dischargestatus + 
+                admissionsource + age + gender, 
+              family = "binomial", weights = weights,
+              data = diabetesfinal1)
+
+summary(model1_sens)
+
+#fit model 2 for readmission <30 days vs. readmission >30 days using propensity weights
+model2_sens <- glm(readmit_30days ~ medication + race + 
+                diagnosis + time_in_hospital + 
+                num_medications + dischargestatus + 
+                admissionsource + age + gender, 
+              family = "binomial", weights = weights,
+              data = diabetesfinal2)
+
+summary(model2_sens)
+
+```
 
 ### Model Assumptions
 
@@ -577,3 +726,5 @@ no mutlicollinearity:  VIF values below 5
 ## Results
 
 ## Conclusions
+
+## Limitations
