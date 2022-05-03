@@ -513,7 +513,7 @@ ggplot(data = diabetes_temp2 %>% mutate(Medication_Type = ifelse(medication == 1
 matched_list <- matchit(formula = medication ~  prop, 
                         data = diabetes_temp, 
                         method = "nearest", 
-                        replace=TRUE,
+                        replace=FALSE,
                         caliper=0.2, 
                         reestimate=FALSE,
                         ratio = 1)
@@ -521,7 +521,7 @@ matched_list <- matchit(formula = medication ~  prop,
 matched_list2 <- matchit(formula = medication ~  prop, 
                         data = diabetes_temp2, 
                         method = "nearest", 
-                        replace=TRUE,
+                        replace=FALSE,
                         caliper=0.2, 
                         reestimate=FALSE,
                         ratio = 1)
