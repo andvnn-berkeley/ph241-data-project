@@ -616,8 +616,8 @@ note: had to delete diagnosis from model (missing values, need to deal with late
 # continuous variables: time_in_hospital, num_medications, (should we also consider age as "continuous" variable?)
 
 # getting outcome probabilities: 
-mod1 <- glm(readmit_yesno ~ biguanide+ hormone+ race+time_in_hospital+ num_medications+ dischargestatus+ admissionsource+ age+ gender, data = diabetesfinal1, family = "binomial")
-mod2 <- glm(readmit_30days ~ biguanide+ hormone+ race+time_in_hospital+ num_medications+ dischargestatus+ admissionsource+ age+ gender, data = diabetesfinal2, family = "binomial")
+mod1 <- glm(readmit_yesno ~ medication+ race+time_in_hospital+ num_medications+ dischargestatus+ admissionsource+ age+ gender, data = diabetesfinal1, family = "binomial")
+mod2 <- glm(readmit_30days ~ medication+ race+time_in_hospital+ num_medications+ dischargestatus+ admissionsource+ age+ gender, data = diabetesfinal2, family = "binomial")
 
 prob1 <- predict(mod1, type = "response")
 prob2 <- predict(mod2, type = "response")
