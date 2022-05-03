@@ -543,7 +543,7 @@ After matching on propensity score, we fit our logistic regression models in ali
 model1 <- clogit(as.numeric(readmit_yesno) ~ medication + race + 
                 diagnosis + time_in_hospital + 
                 num_medications + dischargestatus + 
-                admissionsource + strata(subclass),
+                admissionsource + medication:race + strata(subclass),
               data = diabetes_matched, method = "exact")
 
 summary(model1)
@@ -552,7 +552,7 @@ summary(model1)
 model2 <- clogit(as.numeric(readmit_30days) ~ medication + race + 
                 diagnosis + time_in_hospital + 
                 num_medications + dischargestatus + 
-                admissionsource + strata(subclass),
+                admissionsource + medication:race + strata(subclass),
               data = diabetes_matched2, method = "exact")
 
 summary(model2)
@@ -572,7 +572,7 @@ diabetesfinal2 <- diabetesfinal2 %>%
 model1_sens <- glm(readmit_yesno ~ medication + race + 
                 diagnosis + time_in_hospital + 
                 num_medications + dischargestatus + 
-                admissionsource, 
+                admissionsource + medication:race, 
               family = "binomial", weights = weights,
               data = diabetesfinal1)
 
@@ -582,7 +582,7 @@ summary(model1_sens)
 model2_sens <- glm(readmit_30days ~ medication + race + 
                 diagnosis + time_in_hospital + 
                 num_medications + dischargestatus + 
-                admissionsource, 
+                admissionsource + medication:race, 
               family = "binomial", weights = weights,
               data = diabetesfinal2)
 
