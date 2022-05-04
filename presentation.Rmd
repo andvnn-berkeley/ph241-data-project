@@ -615,6 +615,16 @@ model1 <- clogit(as.numeric(readmit_yesno) ~ medication + race +
                 admissionsource + medication:race + strata(subclass),
               data = diabetes_matched, method = "exact")
 
+# data1_chisq <- diabetesfinal1 %>%
+#   dplyr::group_by(race) %>%
+#   summarize(n = n(),
+#             sum_readmit = sum(readmit_yesno == 1),
+#             prop_readmit = sum_readmit/sum(data1_chisq$sum_readmit))
+
+#chisq.test(x = data1_chisq$n,
+           #p = data1_chisq$prop_readmit)
+
+
 tidy(model1)
 #summary(model1)
 #jtools::summ(model1, confint = TRUE, exp = TRUE, vifs = TRUE)
@@ -628,6 +638,16 @@ model2 <- clogit(as.numeric(readmit_30days) ~ medication + race +
                 num_medications + dischargestatus + 
                 admissionsource + medication:race + strata(subclass),
               data = diabetes_matched2, method = "exact")
+
+
+#data2_chisq <- diabetesfinal2 %>%
+  #dplyr::group_by(race) %>%
+  #summarize(n = n(),
+   #         sum_readmit = sum(readmit_30days == 1),
+    #        prop_readmit = sum_readmit/3991)
+
+#chisq.test(x = data2_chisq$n,
+           #p = data2_chisq$prop_readmit)
 
 tidy(model2)
 #jtools::summ(model2, confint = TRUE, exp = TRUE, vifs = TRUE)
@@ -741,13 +761,13 @@ dwplot(models2,
 
 - Being prescribed metformin is associated with protection against readmission at all.
 
-- Race was not a consistent predictor of readmission or earlier readmission; race and medication as an interaction term did not show significant statistical effect modification.
+- Race was not a consistent predictor of readmission or earlier readmission; race and medication as an interaction term was a significant statistical effect modification in the weighted model.
 
 - Sensitivity analysis with propensity score weighted models showed similar (but higher magnitude) results to matched models.
 
-- Heightened scale of coefficients and statistical significance may be due to larger sample size
+- Heightened scale of coefficients and statistical significance may be due to larger sample size.
 
-- Concordant findings suggest that both procedure may approximate the same results
+- Concordant findings suggest that both procedure may approximate the same results.
 
 ---
 
@@ -755,7 +775,7 @@ dwplot(models2,
 
 **Limitations**
 
-- Causal mechanism model may be incorrect
+- Causal mechanism of model may be incorrect
 - Lost nuance of data when binarizing variables
 - Treatment groups only balanced in observed covariates
 - Analytical dataset was much smaller than the original
