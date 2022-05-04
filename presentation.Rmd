@@ -109,7 +109,7 @@ We created two datasets with two distinct partitions of the response variable:
 
 - Outcome variable is binary
 - Linearity between log odds of the outcome and each continuous predictor variable
-- Observations (individual) patients are independent of each other
+- Observations (individual patients) are independent of each other
 - Little to no multicollinearity among independent variables
 - No extreme outliers
 
@@ -599,7 +599,6 @@ model2 <- clogit(as.numeric(readmit_30days) ~ medication + race +
               data = diabetes_matched2, method = "exact")
 
 tidy(model2)
-
 #jtools::summ(model2, confint = TRUE, exp = TRUE, vifs = TRUE)
 ```
 
@@ -647,10 +646,12 @@ library(dotwhisker)
 #jtools::plot_summs(model1, model1_sens, model.names = c("PS Matched", "PS Weighted"))
 
 tidy_m1 <- tidy(model1) %>%
-  mutate(model = "Matched") %>%
+  mutate(model = "Matched",
+         estimate = exp(estimate)) %>%
   filter(term == c("medication", "race2", "race3", "race4"))
 tidy_m1_sens <- tidy(model1_sens) %>%
-  mutate(model = "Weighted") %>%
+  mutate(model = "Weighted",
+         estimate = exp(estimate)) %>%
   filter(term == "medication" | term == "race2" | term == "race3"| term == "race4")
 
 models1 <- rbind(tidy_m1, tidy_m1_sens) %>%
@@ -676,10 +677,12 @@ dwplot(models1,
 ```{r summary graphs 2, echo = F, warning = F, message=F}
 
 tidy_m2 <- tidy(model2) %>%
-  mutate(model = "Matched") %>%
+  mutate(model = "Matched",
+         estimate = exp(estimate)) %>%
   filter(term == c("medication", "race2", "race3", "race4"))
 tidy_m2_sens <- tidy(model2_sens) %>%
-  mutate(model = "Weighted") %>%
+  mutate(model = "Weighted",
+         estimate = exp(estimate)) %>%
   filter(term == "medication" | term == "race2" | term == "race3"| term == "race4")
 
 models2 <- rbind(tidy_m2, tidy_m2_sens) %>%
@@ -703,9 +706,9 @@ dwplot(models2,
 
 **Takeaways**
 
-- Being prescribed metformin is associated with protection against readmission at all, and earlier readmission versus being prescribed insulin.
+- Being prescribed metformin is associated with protection against readmission at all.
 
-- Race was not a strong predictor of readmission or earlier readmission; race and medication as an interaction term did not show significant statistical effect modification.
+- Race was not a consistent predictor of readmission or earlier readmission; race and medication as an interaction term did not show significant statistical effect modification.
 
 - Sensitivity analysis with propensity score weighted models showed similar (but higher magnitude) results to matched models.
 
@@ -719,7 +722,7 @@ dwplot(models2,
 
 **Limitations**
 
-- Causal mechanism model is based on may be incorrect
+- Causal mechanism model may be incorrect
 - Lost nuance of data when binarizing variables
 - Treatment groups only balanced in observed covariates
 - Analytical dataset was much smaller than the original
