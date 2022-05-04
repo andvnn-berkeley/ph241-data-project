@@ -4,12 +4,35 @@ subtitle: 'PH241: Team Data Project'
 author: "Andrew Nguyen, Jessica Pak, Joanne Yang"
 date: "Spring 2022"
 output:
-  slidy_presentation: default
+  slidy_presentation:
+    highlight: pygments
+    footer: "Impact of metformin on diabetes-related readmission"
+    df_print: paged
+    fig_width: 8
+    fig_height: 4.5
+    fig_retina: 5
+    font_adjustment: -0.8
   ioslides_presentation: default
-  beamer_presentation: default
+  beamer_presentation:
+    slide_level: 3
+header-includes:
+- \usetheme{Goettingen}
+- \renewcommand{\textbf}{\structure}
+- \renewcommand{\mathbf}{\structure}
+- \addtobeamertemplate{navigation symbols}{}{ \usebeamerfont{footline} }
+- \addtobeamertemplate{navigation symbols}{}{ \usebeamercolor[fg]{footline} }
+- \addtobeamertemplate{navigation symbols}{}{ \insertframenumber/\inserttotalframenumber}
+- \usepackage[os=win]{menukeys}
+- \usepackage{soul}
+- \usepackage{xcolor}
+- \usepackage{caption}
+- \usepackage[os=win]{menukeys}
+- \usepackage{copyrightbox}
+classoption: aspectratio=169
 ---
 
 ```{r libraries, include=F}
+options(tinytex.verbose = TRUE)
 library(ggdag)
 library(dagitty)
 library(tidyverse)
@@ -372,7 +395,10 @@ diabetesfinal2 <- diabetesfinal2 %>% filter(is.na(diagnosis) == F)
 ```
 
 ### Causal Framework: Directed Acyclic Graph of treatment/outcome relationship
-```{r dag, message=F, warning=F, echo=F}
+
+![](media/analysis_dag.png){width=720px}
+
+```{r dag, message=F, warning=F, echo=F, include = F}
 
 dag_diabetes <- dagitty('dag{
                         type [pos = "0, 1"]
@@ -399,6 +425,9 @@ dag_diabetes <- dagitty('dag{
 
 ggdag(dag_diabetes, layout = "circle") + 
   theme_dag_blank()
+
+
+
 
 ```
 
@@ -441,8 +470,8 @@ ggplot(data = diabetesfinal1 %>% mutate(Medication_Type = ifelse(medication == 1
          title = "Figure 1: Propensity of receiving treatment before exclusion") +
     theme_classic() +
     theme(legend.position="top") +
-    scale_y_continuous(expand = c(0,0)) +
-    scale_x_continuous(expand = c(0,0)) +
+  scale_x_continuous(limits = c(0, 0.5), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0, 7), expand = c(0, 0)) +
   theme(plot.title = element_text(size=12, face="bold"))
 
 # ggplot(data = diabetesfinal2 %>% mutate(Medication_Type = ifelse(medication == 1, "Metformin (1)", "Insulin (0)")), 
@@ -489,8 +518,8 @@ ggplot(data = diabetes_temp %>% mutate(Medication_Type = ifelse(medication == 1,
          title = "Figure 2: Propensity of receiving treatment after exclusion") +
     theme_classic() +
     theme(legend.position="top") +
-    scale_y_continuous(expand = c(0,0)) +
-    scale_x_continuous(expand = c(0,0)) +
+  scale_x_continuous(limits = c(0, 0.5), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0, 7), expand = c(0, 0)) +
   theme(plot.title = element_text(size=12, face="bold"))
 
 # ggplot(data = diabetes_temp2 %>% mutate(Medication_Type = ifelse(medication == 1, "Metformin (1)", "Insulin (0)")), 
@@ -553,7 +582,6 @@ diabetes_matched2 <- get_matches(matched_list2)
 # Table 1
 
 library(table1)
-library(vtable)
 
 diabetes_clean2$medication = factor(diabetes_clean2$medication, levels = c(0, 1), labels = c('insulin', 'metformin'))
 
@@ -569,6 +597,7 @@ diabetes_clean2$age = factor(diabetes_clean2$age, levels = c(1, 2, 3, 4, 5, 6, 7
 
 table1(~ medication + race + diagnosis + dischargestatus + admissionsource + age + time_in_hospital + num_medications| readmitted, data=diabetes_clean2)
 
+
 ```
 
 ---
@@ -577,6 +606,8 @@ table1(~ medication + race + diagnosis + dischargestatus + admissionsource + age
 
 **Model 1 Summary: Readmission vs. No Readmission**
 ```{r analysis 1, warning = F, echo = F}
+library(survival)
+
 #fit model 1 for readmission vs. no readmission
 model1 <- clogit(as.numeric(readmit_yesno) ~ medication + race + 
                 diagnosis + time_in_hospital + 
@@ -648,7 +679,7 @@ library(dotwhisker)
 tidy_m1 <- tidy(model1) %>%
   mutate(model = "Matched",
          estimate = exp(estimate)) %>%
-  filter(term == c("medication", "race2", "race3", "race4"))
+  filter(term == "medication" | term == "race2" | term == "race3"| term == "race4")
 tidy_m1_sens <- tidy(model1_sens) %>%
   mutate(model = "Weighted",
          estimate = exp(estimate)) %>%
@@ -678,18 +709,20 @@ dwplot(models1,
 
 tidy_m2 <- tidy(model2) %>%
   mutate(model = "Matched",
-         estimate = exp(estimate)) %>%
-  filter(term == c("medication", "race2", "race3", "race4"))
+         estimate = exp(estimate),
+         std.error = exp(std.error)) %>%
+  filter(term == "medication" | term == "race2" | term == "race3"| term == "race4")
 tidy_m2_sens <- tidy(model2_sens) %>%
   mutate(model = "Weighted",
-         estimate = exp(estimate)) %>%
+         estimate = exp(estimate),
+         std.error = exp(std.error)) %>%
   filter(term == "medication" | term == "race2" | term == "race3"| term == "race4")
 
 models2 <- rbind(tidy_m2, tidy_m2_sens) %>%
-  mutate(term = case_when(term == "medication" ~ "Medication",
-                          term == "race2" ~ "Black",
-                          term == "race3" ~ "Hispanic",
-                          term == "race4" ~ "Other"))
+  mutate(term = case_when(term == "medication" ~ "Medication: Metformin",
+                          term == "race2" ~ "Race: Black",
+                          term == "race3" ~ "Race: Hispanic",
+                          term == "race4" ~ "Race: Other"))
 
 dwplot(models2,
        vline = geom_vline(
