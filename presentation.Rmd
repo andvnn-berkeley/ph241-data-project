@@ -1,0 +1,731 @@
+---
+title: 'Impact of metformin on diabetes-related readmission'
+subtitle: 'PH241: Team Data Project'
+author: "Andrew Nguyen, Jessica Pak, Joanne Yang"
+date: "Spring 2022"
+output:
+  slidy_presentation: default
+  ioslides_presentation: default
+  beamer_presentation: default
+---
+
+```{r libraries, include=F}
+library(ggdag)
+library(dagitty)
+library(tidyverse)
+library(lmtest)
+library(generics)
+library(broom)
+library(caret)
+library(MatchIt)
+library(survival)
+library(jtools)
+```
+
+```{r import data, include=F}
+diabetes <- read_csv("./datasets/diabetic_data.csv")
+```
+
+
+### Research Rationale
+
+
+- Diabetes mellitus has been a worsening crisis: from 20 million patients in 2010 to 50 million by 2050 (Gregg et al. 2014).
+- Hospital readmission is an indicator of worse patient outcomes
+- Imperative to advocate for better preventive efforts and to understand which treatment and adaptation options are most effective.
+- Insulin long-term efficacy and safety is not established. Metformin have shown promising results.
+- Race in the United States’ society and healthcare system plays an outsized role in determining access and quality of care.
+
+
+### The Research Questions
+
+**Does diabetes medication impact the probability of hospital readmission amongst patients with diabetes?** 
+
+- Insulin vs. metformin? 
+
+**Does diabetes medication impact the probability of earlier hospital readmission (<30 days vs. >30 days)?** 
+
+- Does race influence either of these relationships?
+
+---
+
+## Methods
+
+
+- **Study design**: case-control
+- Each observation is a unique patient, their visit details, and their readmission outcome
+- *Estimand*: odds of readmission given medication type and other covariates
+
+
+**Dataset from CERNER health centers**
+- Nationally representative hospital sample
+- Large sample size, mostly complete data
+- May be prone to selection bias (issues with healthcare access, fragmented systems)
+
+**Data Cleaning Objectives:**
+
+- Create binary indicator variables for drug classes (any prescription of said drug = 1, else = 0)
+- Create indicator variables for categorical variables (race, sex, type of admission source, etc.)
+- Create age range indicator variables
+- Create diagnosis indicator variables for groups of ICD-10 codes
+- Factor all categorical variables
+
+## Methods
+
+**Missingness**
+
+- Investigate missingness as a function of observed covariates
+- Subset missing values that cannot be imputed (categorical variables)
+
+We decide to build propensity scores as a function of these covariates reflecting patient-provider social dynamics and severity of disease.
+
+ **Positivity**
+
+- Investigate propensity of treatment as a function of covariates thought to be associated with receiving treatment; subset unexchangeable observations
+
+- Match observations on propensity score without replacement
+- Perform sensitivity analysis using propensity score weights on non-matched data
+
+---
+
+## Methods
+
+**Two models of interest:**
+
+We created two datasets with two distinct partitions of the response variable:
+
+- **Model 1**: Relationship between medication type and readmission at all (no readmission vs. all readmission)
+- **Model 2**: Relationship between medication type and time earlier readmission (<30 days vs. >30 days)
+
+**Assumptions:**
+
+***Propensity scores***:
+
+- Covariates that would affect propensity of treatment
+- Unobserved covariates likely exist
+
+***Models***:
+
+- Outcome variable is binary
+- Linearity between log odds of the outcome and each continuous predictor variable
+- Observations (individual) patients are independent of each other
+- Little to no multicollinearity among independent variables
+- No extreme outliers
+
+---
+
+```{r drug class indicator, warning=F, message=F, echo=F}
+diabetes <- diabetes %>%
+  distinct(patient_nbr, .keep_all = T)
+
+diabetes_clean <- diabetes
+
+# Creating drug class indicator variables. There are 24 individual medications across different drug classes
+
+#alpha-glucosidase inhibitor
+diabetes_clean['acarbose'] = ifelse(diabetes['acarbose'] != 'No', 1, 0)
+diabetes_clean['miglitol'] = ifelse(diabetes['miglitol'] != 'No', 1, 0)
+#biguanide
+diabetes_clean['metformin'] = ifelse(diabetes['metformin'] != 'No', 1, 0)
+#hormone
+diabetes_clean['insulin'] = ifelse(diabetes['insulin'] != 'No', 1, 0)
+#diuretic
+diabetes_clean['examide'] = ifelse(diabetes['examide'] != 'No', 1, 0)
+#DPP-4 inhibitor
+diabetes_clean['citoglipton'] = ifelse(diabetes['citoglipton'] != 'No', 1, 0) #sitagliptin??? citoglipton DNE
+#meglitinide
+diabetes_clean['repaglinide'] = ifelse(diabetes['repaglinide'] != 'No', 1, 0)
+diabetes_clean['nateglinide'] = ifelse(diabetes['nateglinide'] != 'No', 1, 0)
+#sulfonylureas
+diabetes_clean['glimepiride'] = ifelse(diabetes['glimepiride'] != 'No', 1, 0)
+diabetes_clean['glipizide'] = ifelse(diabetes['glipizide'] != 'No', 1, 0)
+diabetes_clean['tolazamide'] = ifelse(diabetes['tolazamide'] != 'No', 1, 0)
+diabetes_clean['tolbutamide'] = ifelse(diabetes['tolbutamide'] != 'No', 1, 0)
+diabetes_clean['glyburide'] = ifelse(diabetes['glyburide'] != 'No', 1, 0)
+diabetes_clean['chlorpropamide'] = ifelse(diabetes['chlorpropamide'] != 'No', 1, 0)
+diabetes_clean['acetohexamide'] = ifelse(diabetes['acetohexamide'] != 'No', 1, 0)
+#thiazolidinedione(glitazone)
+diabetes_clean['pioglitazone'] = ifelse(diabetes['pioglitazone'] != 'No', 1, 0)
+diabetes_clean['rosiglitazone'] = ifelse(diabetes['rosiglitazone'] != 'No', 1, 0)
+diabetes_clean['troglitazone'] = ifelse(diabetes['troglitazone'] != 'No', 1, 0)
+#combo
+diabetes_clean['glyburide-metformin'] = ifelse(diabetes['glyburide-metformin'] != 'No', 1, 0)
+diabetes_clean['glipizide-metformin'] = ifelse(diabetes['glipizide-metformin'] != 'No', 1, 0)
+diabetes_clean['glimepiride-pioglitazone'] = ifelse(diabetes['glimepiride-pioglitazone'] != 'No', 1, 0)
+diabetes_clean['metformin-rosiglitazone'] = ifelse(diabetes['metformin-rosiglitazone'] != 'No', 1, 0)
+diabetes_clean['metformin-pioglitazone'] = ifelse(diabetes['metformin-pioglitazone'] != 'No', 1, 0)
+
+
+```
+
+```{r agg drug class, message=F, warning=F, echo=F}
+
+# Aggregating medication into overarching drug classes (if there is at least one drug in the class prescribed, then the observation is true for that drug class). There are 6 drug classes in all.
+
+# Drug Class
+diabetes_clean2 <- diabetes_clean
+diabetes_clean2['a_glucosidase.inhibitor'] = ifelse(diabetes_clean['acarbose'] == 1 | diabetes_clean['miglitol'] == 1, 1, 0)
+diabetes_clean2['biguanide'] = ifelse(diabetes_clean['metformin'] == 1, 1, 0)
+diabetes_clean2['hormone'] = ifelse(diabetes_clean['insulin'] == 1, 1, 0)
+diabetes_clean2['diuretic'] = ifelse(diabetes_clean['examide'] == 1, 1, 0)
+diabetes_clean2['ddp4.inhibitor'] = ifelse(diabetes_clean['citoglipton'] == 1, 1, 0)
+diabetes_clean2['meglitinide'] = ifelse(diabetes_clean['repaglinide'] == 1 | diabetes['nateglinide'] == 1, 1, 0)
+diabetes_clean2['sulfonylureas'] = ifelse(diabetes_clean['glimepiride'] == 1 | 
+                                           diabetes_clean['glipizide'] == 1 | 
+                                           diabetes_clean['tolazamide'] == 1| 
+                                           diabetes_clean['tolbutamide'] == 1 | 
+                                           diabetes_clean['glyburide'] == 1 |
+                                           diabetes_clean['chlorpropamide'] == 1 |
+                                           diabetes['acetohexamide'] == 1, 1, 0)
+diabetes_clean2['glitazone'] = ifelse(diabetes_clean['pioglitazone'] == 1 | 
+                                           diabetes_clean['rosiglitazone'] == 1 | 
+                                           diabetes_clean['troglitazone'] == 1, 1, 0)
+diabetes_clean2['combo'] = ifelse(diabetes_clean['glyburide-metformin'] == 1 | 
+                                           diabetes_clean['glipizide-metformin'] == 1 | 
+                                           diabetes_clean['glimepiride-pioglitazone'] == 1| 
+                                           diabetes_clean['metformin-rosiglitazone'] == 1 | 
+                                           diabetes_clean['metformin-pioglitazone'] == 1, 1, 0)
+
+
+# Remove deprecated dataset for memory
+rm(diabetes_clean)
+rm(diabetes)
+```
+```{r, echo = F}
+# creating missing_race indicator variable
+diabetes_clean2['missing_race'] <- ifelse(diabetes_clean2['race'] == '?', 1, 0) 
+```
+
+
+```{r non-drug cov, message=F, warning=F, echo=F}
+# categorizing into numerical values
+
+# 1 = home, 0 = otherwise
+diabetes_clean2['dischargestatus'] <- ifelse(diabetes_clean2['discharge_disposition_id'] == 1, 0, 1)
+
+# 1 = ER, 2 = Referral, 3 = Otherwise
+diabetes_clean2['admissionsource'] <- ifelse(diabetes_clean2['admission_source_id'] == 7, 1, ifelse(diabetes_clean2['admission_source_id'] == 1, 2, 3))
+
+
+diabetes_clean2$diag_1 <- as.numeric(diabetes_clean2$diag_1)
+
+# 1 = circulatory, 2 = respiratory, 3 = digestive, 4 = diabetes, 5= injury, 6 = musculoskeletal, 7 = genitourinary, 8= neoplasms, 9 = other
+diabetes_clean2['diagnosis'] <- ifelse(diabetes_clean2$diag_1 %in% c(390:459, 785), 1, 
+                                      ifelse(diabetes_clean2$diag_1 %in% c(460:519, 786), 2,
+                                             ifelse(diabetes_clean2$diag_1 %in% c(520:579, 787), 3, 
+                                                    ifelse(between(diabetes_clean2$diag_1, 250, 250.999), 4,
+                                                           ifelse(diabetes_clean2$diag_1 %in%c(800:999), 5, 
+                                                                  ifelse(diabetes_clean2$diag_1 %in% c(710:739), 6,
+                                                                         ifelse(diabetes_clean2$diag_1 %in% c(580:629, 788), 7,
+                                                                                ifelse(diabetes_clean2$diag_1 %in% c(140:239, 780:782, 784, 790:799,240:249, 251:279, 680:709, 001:139, 290:319), 8, 9))))))))
+
+# 1 = caucasian, 2 = african american, 3 = hispanic, 4 = other, 5 = missing
+diabetes_clean2['race'] <- ifelse(diabetes_clean2['race'] == "Caucasian", 1,
+                                  ifelse(diabetes_clean2['race'] == "AfricanAmerican", 2,
+                                         ifelse(diabetes_clean2['race'] == "Hispanic", 3,
+                                                ifelse(diabetes_clean2['race'] == "Other", 4, 5))))
+
+# 1 = [0-10), 2= [10-20), 3= [20-30), 4 =[30-40), 5 = [40-50), 6= [50-60), 7 = [60-70), 8 =[70-80), 9= [80-90), 10 = [90-100) 
+diabetes_clean2['age'] <- ifelse(diabetes_clean2['age'] == "[0-10)", 1,
+                                 ifelse(diabetes_clean2['age'] == "[10-20)", 2,
+                                        ifelse(diabetes_clean2['age'] == "[20-30)", 3,
+                                               ifelse(diabetes_clean2['age'] == "[30-40)", 4,
+                                                      ifelse(diabetes_clean2['age'] == "[40-50)", 5,
+                                                             ifelse(diabetes_clean2['age'] == "[50-60)", 6,
+                                                                    ifelse(diabetes_clean2['age'] == "[60-70)", 7,
+                                                                           ifelse(diabetes_clean2['age'] == "[70-80)", 8,
+                                                                                  ifelse(diabetes_clean2['age'] == "[80-90)", 9, 10)))))))))
+                                                                                         
+
+# 1 = male, 0 = female
+diabetes_clean2['gender'] <- ifelse(diabetes_clean2['gender'] == "Male", 1, 0)
+
+# medication type indicator variable (insulin = 0, metformin = 1)
+diabetes_clean2 <- diabetes_clean2 %>%
+  filter(insulin == 1 | metformin == 1) %>%
+  mutate(medication = ifelse(insulin == 1, 0, 1))
+
+```
+
+```{r, echo = F}
+# cleaning readmission outcome
+
+# outcome variable - binary: yes readmission or no readmission
+diabetes_clean2['readmit_yesno'] = ifelse(diabetes_clean2['readmitted'] != 'NO', 1, 0)
+
+# 2nd dataset with other 2nd outcome variable: only looking at 1. >30 or 0. <30 days
+diabetes_clean3 <- diabetes_clean2 %>% 
+  filter(readmitted != 'NO') %>% 
+  mutate(readmit_30days = ifelse(readmitted == ">30", 0, 1))
+
+```
+
+
+```{r clean dataset, warning=F, message=F, echo=F}
+
+# Diabetes clean data; num_medications is # distinct drugs administered, not specific to diabetic medications
+diabetesfinal1 <- diabetes_clean2 %>% select(
+  readmit_yesno, medication, race, diagnosis, time_in_hospital, num_medications, dischargestatus,
+  admissionsource, age, gender)
+
+diabetesfinal2 <- diabetes_clean3 %>% select(
+  readmit_30days, medication, race, diagnosis, time_in_hospital, num_medications, dischargestatus,
+  admissionsource, age, gender)
+
+# Free up memory by removing datasets
+rm(diabetes_clean3)
+
+# Factoring categorical variables.
+diabetesfinal1$readmit_yesno = as.factor(diabetesfinal1$readmit_yesno)
+diabetesfinal1$race = as.factor(diabetesfinal1$race)
+diabetesfinal1$diagnosis = as.factor(diabetesfinal1$diagnosis)
+diabetesfinal1$dischargestatus = as.factor(diabetesfinal1$dischargestatus)
+diabetesfinal1$admissionsource = as.factor(diabetesfinal1$admissionsource)
+diabetesfinal1$age = as.factor(diabetesfinal1$age)
+diabetesfinal1$gender = as.factor(diabetesfinal1$gender)
+
+diabetesfinal2$readmit_30days = as.factor(diabetesfinal2$readmit_30days)
+diabetesfinal2$race = as.factor(diabetesfinal2$race)
+diabetesfinal2$diagnosis = as.factor(diabetesfinal2$diagnosis)
+diabetesfinal2$dischargestatus = as.factor(diabetesfinal2$dischargestatus)
+diabetesfinal2$admissionsource = as.factor(diabetesfinal2$admissionsource)
+diabetesfinal2$age = as.factor(diabetesfinal2$age)
+diabetesfinal2$gender = as.factor(diabetesfinal2$gender)
+
+```
+
+
+```{r missingness, warning=F, message=F, echo=F}
+#checking for missing observations for all variables dataset
+#sapply(diabetesfinal1, function(x) sum(is.na(x)))
+
+#proportion of observations missing diagnosis value
+#sum(is.na(diabetesfinal1$diagnosis)) / nrow(diabetesfinal1) *100
+
+```
+
+
+```{r dag diag, message=F, warning=F, echo=F}
+
+# dag_diag <- dagitty('dag{
+#                         rcv_diag [pos = "2, 1"]
+#                         time [pos = "0, 1"]
+#                         adm_src [pos = "0, 2"]
+#                         race [pos = "0, 0"]
+#                         
+#                         time -> rcv_diag
+#                         adm_src -> rcv_diag
+#                         race -> rcv_diag
+# }')
+# 
+# ggdag(dag_diag, layout = "circle")
+
+```
+
+```{r tx prop score 1, message=F, warning=F, echo = F}
+# diag_missing <- diabetesfinal1 %>% mutate(missing_diag = ifelse(is.na(diabetesfinal1$diagnosis) == T, 1, 0))
+# 
+# #propensity model with all terms directly or indirectly affecting treatment, not including interaction terms
+# prop_tx <- glm(missing_diag ~  admissionsource + time_in_hospital + race, family = "binomial", data = diag_missing)
+# #propensity model with all terms directly or indirectly affecting treatment, including interaction terms
+# prop_tx_int <- glm(missing_diag ~  admissionsource*time_in_hospital*race, family = "binomial", data = diag_missing)
+# 
+# #model summaries
+# tidy(prop_tx)
+# tidy(prop_tx_int)
+# 
+# #likelihood ratio test between two models
+# lrtest(prop_tx, prop_tx_int)
+```
+
+```{r tx prop score 2, message=F, warning=F, echo = F}
+#creating column named "prop" for propensities of receiving diagnosis
+# diag_missing['prop'] <- predict(prop_tx, type="response", data=diag_missing)
+# 
+# #mutate new column in df for binary string categories of treatment
+# ggplot(data = diag_missing %>% mutate(Diagnosis_Cat = ifelse(missing_diag == 1, "Undiagnosed (1)", "Diagnosed (0)")), 
+#        aes(x = prop, 
+#            #color code by treatment group
+#            group=Diagnosis_Cat, 
+#            fill = Diagnosis_Cat, 
+#            color = Diagnosis_Cat)) +
+#     geom_density(alpha = 0.25) + 
+#     labs(x = "Propensity of receiving diagnosis based on covariates",
+#          y = "Density",
+#          fill = "Category of Diagnosis",
+#          color = "Category of Diagnosis") +
+#     theme_classic() +
+#     theme(legend.position="top") +
+#     scale_y_continuous(expand = c(0,0)) +
+#     scale_x_continuous(expand = c(0,0))
+```
+
+
+```{r missingness 2, message=F, warning=F, echo=F}
+#filtering out missing observations 
+diabetesfinal1 <- diabetesfinal1 %>% filter(is.na(diagnosis) == F)
+diabetesfinal2 <- diabetesfinal2 %>% filter(is.na(diagnosis) == F)
+
+#checking missingness across all columns
+#sapply(diabetesfinal1, function(x) sum(is.na(x))) 
+```
+
+### Causal Framework: Directed Acyclic Graph of treatment/outcome relationship
+```{r dag, message=F, warning=F, echo=F}
+
+dag_diabetes <- dagitty('dag{
+                        type [pos = "0, 1"]
+                        ra [pos = "2, 1"]
+                        mfx [pos = "1, 1"]
+                        diag [pos = "1, 2"]
+                        race [pos = "1, 1.5"]
+                        age [pos = "0.75, 0.5"]
+                        sex [pos = "1.25, 0.5"]
+                        sev [pos = "1, 0"]
+                        
+                        type -> mfx
+                        mfx -> ra
+                        diag -> type
+                        diag -> ra
+                        race -> type
+                        race -> ra
+                        age -> mfx
+                        age -> sev
+                        sex -> mfx
+                        sev -> type
+                        sev -> ra
+}')
+
+ggdag(dag_diabetes, layout = "circle") + 
+  theme_dag_blank()
+
+```
+
+---
+
+```{r positivity analysis, echo = F}
+
+
+#propensity model with all terms directly or indirectly affecting treatment, not including interaction terms
+pos_logit <- glm(medication ~ race + diagnosis + time_in_hospital + age, family = "binomial", data = diabetesfinal1)
+
+pos_logit2 <- glm(medication ~ race + diagnosis + time_in_hospital + age, family = "binomial", data = diabetesfinal2)
+#propensity model with all terms directly or indirectly affecting treatment, including interaction terms (won't run b/c it's probably too many terms)
+#pos_logit_int <- glm(medication ~ race*diagnosis*time_in_hospital*num_medications*dischargestatus*admissionsource*age*gender, family = "binomial", data = diabetesfinal1)
+
+#model summaries
+# tidy(pos_logit)
+# tidy(pos_logit2)
+#tidy(pos_logit_int)
+
+#likelihood ratio test between two models
+#lrtest(pos_logit, pos_logit_int)
+
+
+diabetesfinal1['prop'] <- predict(pos_logit, type="response", data=diabetesfinal1)
+diabetesfinal2['prop'] <- predict(pos_logit2, type="response", data=diabetesfinal2)
+
+#mutate new column in df for binary string categories of treatment
+ggplot(data = diabetesfinal1 %>% mutate(Medication_Type = ifelse(medication == 1, "Metformin (1)", "Insulin (0)")), 
+       aes(x = prop, 
+           #color code by treatment group
+           group=Medication_Type, 
+           fill = Medication_Type, 
+           color = Medication_Type)) +
+    geom_density(alpha = 0.25) + 
+    labs(x = "Propensity of receiving treatment based on covariates",
+         y = "Density",
+         fill = "Category of treatment",
+         color = "Category of treatment",
+         title = "Figure 1: Propensity of receiving treatment before exclusion") +
+    theme_classic() +
+    theme(legend.position="top") +
+    scale_y_continuous(expand = c(0,0)) +
+    scale_x_continuous(expand = c(0,0)) +
+  theme(plot.title = element_text(size=12, face="bold"))
+
+# ggplot(data = diabetesfinal2 %>% mutate(Medication_Type = ifelse(medication == 1, "Metformin (1)", "Insulin (0)")), 
+#        aes(x = prop, 
+#            #color code by treatment group
+#            group=Medication_Type, 
+#            fill = Medication_Type, 
+#            color = Medication_Type)) +
+#     geom_density(alpha = 0.25) + 
+#     labs(x = "Propensity of receiving treatment based on covariates",
+#          y = "Density",
+#          fill = "Category of treatment",
+#          color = "Category of treatment",
+#          title = "Figure (x): Propensity of receiving treatment before exclusion") +
+#     theme_classic() +
+#     theme(legend.position="top") +
+#     scale_y_continuous(expand = c(0,0)) +
+#     scale_x_continuous(expand = c(0,0)) +
+#   theme(plot.title = element_text(size=12, face="bold"))
+```
+
+---
+
+```{r matching, echo = F}
+#exclude observations in each tail
+diabetes_temp <- diabetesfinal1[diabetesfinal1$prop<quantile(diabetesfinal1$prop[diabetesfinal1$medication==1], probs=.975) & 
+                     diabetesfinal1$prop>quantile(diabetesfinal1$prop[diabetesfinal1$medication==0], probs=.025),]
+
+diabetes_temp2 <- diabetesfinal2[diabetesfinal2$prop<quantile(diabetesfinal2$prop[diabetesfinal2$medication==1], probs=.975) & 
+                     diabetesfinal2$prop>quantile(diabetesfinal2$prop[diabetesfinal2$medication==0], probs=.025),]
+
+#graph new propensity distribution
+ggplot(data = diabetes_temp %>% mutate(Medication_Type = ifelse(medication == 1, "Metformin (1)", "Insulin (0)")), 
+       aes(x = prop, 
+           #color code by treatment group
+           group=Medication_Type, 
+           fill = Medication_Type, 
+           color = Medication_Type)) +
+    geom_density(alpha = 0.25) + 
+    labs(x = "Propensity of receiving treatment based on covariates",
+         y = "Density",
+         fill = "Category of treatment",
+         color = "Category of treatment",
+         title = "Figure 2: Propensity of receiving treatment after exclusion") +
+    theme_classic() +
+    theme(legend.position="top") +
+    scale_y_continuous(expand = c(0,0)) +
+    scale_x_continuous(expand = c(0,0)) +
+  theme(plot.title = element_text(size=12, face="bold"))
+
+# ggplot(data = diabetes_temp2 %>% mutate(Medication_Type = ifelse(medication == 1, "Metformin (1)", "Insulin (0)")), 
+#        aes(x = prop, 
+#            #color code by treatment group
+#            group=Medication_Type, 
+#            fill = Medication_Type, 
+#            color = Medication_Type)) +
+#     geom_density(alpha = 0.25) + 
+#     labs(x = "Propensity of receiving treatment based on covariates",
+#          y = "Density",
+#          fill = "Category of treatment",
+#          color = "Category of treatment",
+#          title = "Figure (x): Propensity of receiving treatment after exclusion") +
+#     theme_classic() +
+#     theme(legend.position="top") +
+#     scale_y_continuous(expand = c(0,0)) +
+#     scale_x_continuous(expand = c(0,0)) +
+#   theme(plot.title = element_text(size=12, face="bold"))
+
+#matching observations across treatment groups by propensity score, within 0.2 units of probability of one another, with replacement
+matched_list <- matchit(formula = medication ~  prop, 
+                        data = diabetes_temp, 
+                        method = "nearest", 
+                        replace=FALSE,
+                        caliper=0.2, 
+                        reestimate=FALSE,
+                        ratio = 1)
+
+matched_list2 <- matchit(formula = medication ~  prop, 
+                        data = diabetes_temp2, 
+                        method = "nearest", 
+                        replace=FALSE,
+                        caliper=0.2, 
+                        reestimate=FALSE,
+                        ratio = 1)
+
+#summary(matched_list, un = FALSE)
+
+```
+
+
+``` {r, echo = F}
+#plot(matched_list, type = "jitter", interactive = FALSE)
+
+diabetes_matched <- get_matches(matched_list)
+
+#summary(matched_list2, un = FALSE)
+#plot(matched_list2, type = "jitter", interactive = FALSE)
+diabetes_matched2 <- get_matches(matched_list2)
+
+```
+
+---
+
+## Results
+
+**Table 1: Descriptive Summary of Sample**
+```{r table1, echo=F, warning = F, message = F}
+# Table 1
+
+library(table1)
+library(vtable)
+
+diabetes_clean2$medication = factor(diabetes_clean2$medication, levels = c(0, 1), labels = c('insulin', 'metformin'))
+
+diabetes_clean2$race = factor(diabetes_clean2$race, levels = c(1, 2, 3, 4, 5), labels = c('White', 'Black', 'Hispanic', 'Other', 'Missing'))
+
+diabetes_clean2$diagnosis = factor(diabetes_clean2$diagnosis, levels = c(1, 2, 3, 4, 5, 6, 7, 8, 9), labels = c('Circulatory', 'Respiratory', 'Digestive', 'Diabetes', 'Injury', 'Musculoskeletal', 'Genitourinary', 'Neoplasms', 'Other'))
+
+diabetes_clean2$dischargestatus = factor(diabetes_clean2$dischargestatus, levels = c(1, 0), labels = c('Otherwise', 'Home'))
+
+diabetes_clean2$admissionsource = factor(diabetes_clean2$admissionsource, levels = c(1, 2, 3), labels = c('ER', 'Referral', 'Otherwise'))
+
+diabetes_clean2$age = factor(diabetes_clean2$age, levels = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), c('0-10', '10-20', '20-30', '30-40', '40-50', '50-60', '60-70', '70-80', '80-90', '90-100'))
+
+table1(~ medication + race + diagnosis + dischargestatus + admissionsource + age + time_in_hospital + num_medications| readmitted, data=diabetes_clean2)
+
+```
+
+---
+
+## Results
+
+**Model 1 Summary: Readmission vs. No Readmission**
+```{r analysis 1, warning = F, echo = F}
+#fit model 1 for readmission vs. no readmission
+model1 <- clogit(as.numeric(readmit_yesno) ~ medication + race + 
+                diagnosis + time_in_hospital + 
+                num_medications + dischargestatus + 
+                admissionsource + medication:race + strata(subclass),
+              data = diabetes_matched, method = "exact")
+
+tidy(model1)
+#summary(model1)
+#jtools::summ(model1, confint = TRUE, exp = TRUE, vifs = TRUE)
+```
+
+**Model 2 Summary: Readmission <=30 vs. >30 days**
+``` {r analysis 2, echo = F, warning = F, message = F}
+#fit model 2 for readmission <30 days vs. readmission >30 days
+model2 <- clogit(as.numeric(readmit_30days) ~ medication + race + 
+                diagnosis + time_in_hospital + 
+                num_medications + dischargestatus + 
+                admissionsource + medication:race + strata(subclass),
+              data = diabetes_matched2, method = "exact")
+
+tidy(model2)
+
+#jtools::summ(model2, confint = TRUE, exp = TRUE, vifs = TRUE)
+```
+
+
+```{r sensitivity, echo = F, warning = F}
+#create propensity weights; control weights = 1/1-prop; treatment weights = 1/prop
+diabetesfinal1 <- diabetesfinal1 %>%
+  mutate(weights = ifelse(medication == 0, 1/1-prop, 1/prop))
+
+diabetesfinal2 <- diabetesfinal2 %>%
+  mutate(weights = ifelse(medication == 0, 1/1-prop, 1/prop))
+
+#fit model 1 for readmission vs. no readmission using propensity weights
+model1_sens <- glm(readmit_yesno ~ medication + race + 
+                diagnosis + time_in_hospital + 
+                num_medications + dischargestatus + 
+                admissionsource + medication:race, 
+              family = "binomial", weights = weights,
+              data = diabetesfinal1)
+
+#summary(model1_sens)
+
+#fit model 2 for readmission <30 days vs. readmission >30 days using propensity weights
+model2_sens <- glm(readmit_30days ~ medication + race + 
+                diagnosis + time_in_hospital + 
+                num_medications + dischargestatus + 
+                admissionsource + medication:race, 
+              family = "binomial", weights = weights,
+              data = diabetesfinal2)
+
+#summary(model2_sens)
+
+```
+
+---
+
+## Results
+
+**Model 1 Coefficients** 
+
+```{r summary graphs 1, echo = F, warning = F, message=F}
+library(ggstance)
+library(broom.mixed)
+library(dotwhisker)
+#jtools::plot_summs(model1, model1_sens, model.names = c("PS Matched", "PS Weighted"))
+
+tidy_m1 <- tidy(model1) %>%
+  mutate(model = "Matched") %>%
+  filter(term == c("medication", "race2", "race3", "race4"))
+tidy_m1_sens <- tidy(model1_sens) %>%
+  mutate(model = "Weighted") %>%
+  filter(term == "medication" | term == "race2" | term == "race3"| term == "race4")
+
+models1 <- rbind(tidy_m1, tidy_m1_sens) %>%
+  mutate(term = case_when(term == "medication" ~ "Medication: Metformin",
+                          term == "race2" ~ "Race: Black",
+                          term == "race3" ~ "Race: Hispanic",
+                          term == "race4" ~ "Race: Other"))
+
+dwplot(models1,
+       vline = geom_vline(
+           xintercept = 1,
+           colour = "grey60",
+           linetype = 2
+       ))
+```
+
+---
+
+## Results
+
+**Model 2 Coefficients** 
+
+```{r summary graphs 2, echo = F, warning = F, message=F}
+
+tidy_m2 <- tidy(model2) %>%
+  mutate(model = "Matched") %>%
+  filter(term == c("medication", "race2", "race3", "race4"))
+tidy_m2_sens <- tidy(model2_sens) %>%
+  mutate(model = "Weighted") %>%
+  filter(term == "medication" | term == "race2" | term == "race3"| term == "race4")
+
+models2 <- rbind(tidy_m2, tidy_m2_sens) %>%
+  mutate(term = case_when(term == "medication" ~ "Medication",
+                          term == "race2" ~ "Black",
+                          term == "race3" ~ "Hispanic",
+                          term == "race4" ~ "Other"))
+
+dwplot(models2,
+       vline = geom_vline(
+           xintercept = 1,
+           colour = "grey60",
+           linetype = 2
+       ))
+
+```
+
+---
+
+## Discussion
+
+**Takeaways**
+
+- Being prescribed metformin is associated with protection against readmission at all, and earlier readmission versus being prescribed insulin.
+
+- Race was not a strong predictor of readmission or earlier readmission; race and medication as an interaction term did not show significant statistical effect modification.
+
+- Sensitivity analysis with propensity score weighted models showed similar (but higher magnitude) results to matched models.
+
+- Heightened scale of coefficients and statistical significance may be due to larger sample size
+
+- Concordant findings suggest that both procedure may approximate the same results
+
+---
+
+## Discussion 
+
+**Limitations**
+
+- Causal mechanism model is based on may be incorrect
+- Lost nuance of data when binarizing variables
+- Treatment groups only balanced in observed covariates
+- Analytical dataset was much smaller than the original
+
+
+**Conclusions & Recommendations**
+
+
+- These evidence support prior and continuing clinical research that outline metformin as standard of care for T2DM. 
+- We support the current recommendation of T2DM care moving towards metformin, and for further studies where multiple outcomes and >2 drug classes can be explored to more reflect reality.

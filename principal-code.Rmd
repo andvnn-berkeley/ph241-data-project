@@ -84,8 +84,10 @@ Create two datasets that are identical in predictor variables but with two disti
 - Model 2: Readmission <30 days vs. readmission >30 days
 
 ```{r drug class indicator, warning=F, message=F, echo=F}
-diabetes_clean <- diabetes
+diabetes <- diabetes %>%
+  distinct(patient_nbr, .keep_all = T)
 
+diabetes_clean <- diabetes
 # Creating drug class indicator variables. There are 24 individual medications across different drug classes
 
 #alpha-glucosidase inhibitor
