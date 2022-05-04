@@ -54,10 +54,11 @@ diabetes <- read_csv("./datasets/diabetic_data.csv")
 
 - **Study design**: case-control
 - Each observation is a unique patient, their visit details, and their readmission outcome
-- *Estimand*: odds of readmission given medication type and other covariates
+- **Estimand**: odds of readmission given medication type and other covariates
 
 
 **Dataset from CERNER health centers**
+
 - Nationally representative hospital sample
 - Large sample size, mostly complete data
 - May be prone to selection bias (issues with healthcare access, fragmented systems)
