@@ -619,7 +619,7 @@ model1_sens <- glm(readmit_yesno ~ medication + race +
               family = "binomial", weights = weights,
               data = diabetesfinal1)
 
-#summary(model1_sens)
+# summary(model1_sens)
 
 #fit model 2 for readmission <30 days vs. readmission >30 days using propensity weights
 model2_sens <- glm(readmit_30days ~ medication + race + 
@@ -629,7 +629,7 @@ model2_sens <- glm(readmit_30days ~ medication + race +
               family = "binomial", weights = weights,
               data = diabetesfinal2)
 
-#summary(model2_sens)
+# summary(model2_sens)
 
 ```
 
@@ -708,7 +708,7 @@ dwplot(models2,
 
 - Being prescribed metformin is associated with protection against readmission at all.
 
-- Race was not a consistent predictor of readmission or earlier readmission; race and medication as an interaction term did not show significant statistical effect modification.
+- Race was not a consistent predictor of readmission or earlier readmission.
 
 - Sensitivity analysis with propensity score weighted models showed similar (but higher magnitude) results to matched models.
 
