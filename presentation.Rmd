@@ -11,7 +11,6 @@ output:
     fig_width: 8
     fig_height: 4.5
     fig_retina: 5
-    font_adjustment: -0.8
   ioslides_presentation: default
   beamer_presentation:
     slide_level: 3
@@ -779,6 +778,9 @@ datatable(data = models1,
 
 ```
 
+Note: P-values under 0.05 are highlighted green. 
+
+
 ---
 
 ## Results
@@ -861,6 +863,7 @@ datatable(data = models2,
 
 ```
 
+Note: P-values under 0.05 are highlighted green. 
 
 ---
 
