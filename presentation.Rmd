@@ -43,6 +43,7 @@ library(caret)
 library(MatchIt)
 library(survival)
 library(jtools)
+library(DT)
 ```
 
 ```{r import data, include=F}
@@ -75,7 +76,7 @@ diabetes <- read_csv("./datasets/diabetic_data.csv")
 ## Methods
 
 
-- **Study design**: case-control
+- **Study design**: cohort study with nested case-control analysis
 - Each observation is a unique patient, their visit details, and their readmission outcome
 - **Estimand**: odds of readmission given medication type and other covariates
 
@@ -103,11 +104,11 @@ diabetes <- read_csv("./datasets/diabetic_data.csv")
 
 We decide to build propensity scores as a function of these covariates reflecting patient-provider social dynamics and severity of disease.
 
+
  **Positivity**
 
 - Investigate propensity of treatment as a function of covariates thought to be associated with receiving treatment; subset unexchangeable observations
-
-- Match observations on propensity score without replacement
+- Matched observations on propensity score without replacement
 - Perform sensitivity analysis using propensity score weights on non-matched data
 
 ---
@@ -289,8 +290,7 @@ diabetes_clean3 <- diabetes_clean2 %>%
 
 # Diabetes clean data; num_medications is # distinct drugs administered, not specific to diabetic medications
 diabetesfinal1 <- diabetes_clean2 %>% select(
-  readmit_yesno, medication, race, diagnosis, time_in_hospital, num_medications, dischargestatus,
-  admissionsource, age, gender)
+  readmit_yesno, medication, race, diagnosis, time_in_hospital, num_medications, dischargestatus, admissionsource, age, gender, patient_nbr)
 
 diabetesfinal2 <- diabetes_clean3 %>% select(
   readmit_30days, medication, race, diagnosis, time_in_hospital, num_medications, dischargestatus,
@@ -497,14 +497,39 @@ ggplot(data = diabetesfinal1 %>% mutate(Medication_Type = ifelse(medication == 1
 
 ```{r matching, echo = F}
 #exclude observations in each tail
-diabetes_temp <- diabetesfinal1[diabetesfinal1$prop<quantile(diabetesfinal1$prop[diabetesfinal1$medication==1], probs=.975) & 
+diabetes_analysis <- diabetesfinal1[diabetesfinal1$prop<quantile(diabetesfinal1$prop[diabetesfinal1$medication==1], probs=.975) & 
                      diabetesfinal1$prop>quantile(diabetesfinal1$prop[diabetesfinal1$medication==0], probs=.025),]
 
-diabetes_temp2 <- diabetesfinal2[diabetesfinal2$prop<quantile(diabetesfinal2$prop[diabetesfinal2$medication==1], probs=.975) & 
+
+#check characteristics of subsetted observations
+temp <- anti_join(diabetesfinal1, diabetes_analysis, by = "patient_nbr")
+
+diabetes_analysis2 <- diabetesfinal2[diabetesfinal2$prop<quantile(diabetesfinal2$prop[diabetesfinal2$medication==1], probs=.975) & 
                      diabetesfinal2$prop>quantile(diabetesfinal2$prop[diabetesfinal2$medication==0], probs=.025),]
 
+
+# library(gmodels)
+# CrossTable(temp$race)
+# CrossTable(temp$readmit_yesno)
+# CrossTable(temp$medication)
+# CrossTable(temp$diagnosis)
+# mean(temp$time_in_hospital)
+# quantile(temp$time_in_hospital, c(0.1, 0.25, 0.5, 0.75, 0.9))
+# mean(temp$num_medications)
+# quantile(temp$num_medications, c(0.1, 0.25, 0.5, 0.75, 0.9))
+# CrossTable(temp$dischargestatus)
+# CrossTable(temp$admissionsource)
+# CrossTable(temp$age)
+# CrossTable(temp$gender)
+# 
+# mean(diabetes_analysis$time_in_hospital)
+# quantile(diabetes_analysis$time_in_hospital, c(0.1, 0.25, 0.5, 0.75, 0.9))
+# mean(diabetes_analysis$num_medications)
+# CrossTable(diabetes_analysis$medication)
+# CrossTable(diabetes_analysis$dischargestatus)
+
 #graph new propensity distribution
-ggplot(data = diabetes_temp %>% mutate(Medication_Type = ifelse(medication == 1, "Metformin (1)", "Insulin (0)")), 
+ggplot(data = diabetes_analysis %>% mutate(Medication_Type = ifelse(medication == 1, "Metformin (1)", "Insulin (0)")), 
        aes(x = prop, 
            #color code by treatment group
            group=Medication_Type, 
@@ -522,7 +547,7 @@ ggplot(data = diabetes_temp %>% mutate(Medication_Type = ifelse(medication == 1,
   scale_y_continuous(limits = c(0, 7), expand = c(0, 0)) +
   theme(plot.title = element_text(size=12, face="bold"))
 
-# ggplot(data = diabetes_temp2 %>% mutate(Medication_Type = ifelse(medication == 1, "Metformin (1)", "Insulin (0)")), 
+# ggplot(data = diabetes_analysis2 %>% mutate(Medication_Type = ifelse(medication == 1, "Metformin (1)", "Insulin (0)")), 
 #        aes(x = prop, 
 #            #color code by treatment group
 #            group=Medication_Type, 
@@ -542,7 +567,7 @@ ggplot(data = diabetes_temp %>% mutate(Medication_Type = ifelse(medication == 1,
 
 #matching observations across treatment groups by propensity score, within 0.2 units of probability of one another, with replacement
 matched_list <- matchit(formula = medication ~  prop, 
-                        data = diabetes_temp, 
+                        data = diabetes_analysis, 
                         method = "nearest", 
                         replace=FALSE,
                         caliper=0.2, 
@@ -550,7 +575,7 @@ matched_list <- matchit(formula = medication ~  prop,
                         ratio = 1)
 
 matched_list2 <- matchit(formula = medication ~  prop, 
-                        data = diabetes_temp2, 
+                        data = diabetes_analysis2, 
                         method = "nearest", 
                         replace=FALSE,
                         caliper=0.2, 
@@ -561,6 +586,7 @@ matched_list2 <- matchit(formula = medication ~  prop,
 
 ```
 
+Descriptive analysis revealed that unexchangeable observations were more white, had fewer markers of disease severity, and were readmitted at lower rates.
 
 ``` {r, echo = F}
 #plot(matched_list, type = "jitter", interactive = FALSE)
@@ -577,11 +603,9 @@ diabetes_matched2 <- get_matches(matched_list2)
 
 ## Results
 
-**Table 1: Descriptive Summary of Sample**
+**Table 1: Predictors of interest, descriptives**
 ```{r table1, echo=F, warning = F, message = F}
 # Table 1
-
-library(table1)
 
 diabetes_clean2$medication = factor(diabetes_clean2$medication, levels = c(0, 1), labels = c('insulin', 'metformin'))
 
@@ -595,16 +619,89 @@ diabetes_clean2$admissionsource = factor(diabetes_clean2$admissionsource, levels
 
 diabetes_clean2$age = factor(diabetes_clean2$age, levels = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), c('0-10', '10-20', '20-30', '30-40', '40-50', '50-60', '60-70', '70-80', '80-90', '90-100'))
 
-table1(~ medication + race + diagnosis + dischargestatus + admissionsource + age + time_in_hospital + num_medications| readmitted, data=diabetes_clean2)
+diabetes_table1 <- diabetes_clean2 %>%
+  group_by(readmitted) %>%
+  summarize(n = (n()/nrow(.)),
+            Insulin = (sum(medication == "insulin")/n()),
+            Metformin = (sum(medication == "metformin")/n()),
+            White = (sum(race == "White")/n()),
+            Black = (sum(race == "Black")/n()),
+            Hispanic = (sum(race == "Hispanic")/n()),
+            Other = sum(race == "Other")/n()) %>%
+  mutate(readmitted = case_when(readmitted == "<30" ~ "=<30 days",
+                                readmitted == ">30" ~ ">30 days",
+                                readmitted == "NO" ~ "Not readmitted"))
+
+
+# table1(~ medication + race + diagnosis + dischargestatus + admissionsource + age + time_in_hospital + num_medications| readmitted, data=diabetes_clean2)
+
+#create container for datatable
+table_sketch = htmltools::withTags(table(
+  class = 'display',
+  thead(
+    tr(
+      th(rowspan = 2, 'Readmission Status'),
+      th(rowspan = 2, '% of sample'),
+      th(colspan = 2, 'Prescribed Medication'),
+      th(colspan = 4, 'Reported race')
+    ),
+    tr(lapply(rep(c("Insulin", "Metformin", "White", "Black", 
+                    "Hispanic", "Other"),1), th)
+    )
+  )
+))
+
+#interactive table for first model(s)
+datatable(data = diabetes_table1,
+          options = list(dom = 't'),
+          container = table_sketch,
+          rownames = F) %>%
+  formatStyle("readmitted", fontWeight = 'bold') %>% 
+  formatPercentage(2:8, 1)
+
 
 
 ```
 
+Note: percentages may not sum to 100% due to unreported categories not included for legibility.
+
 ---
+
+```{r sensitivity, echo = F, warning = F}
+#create propensity weights; control weights = 1/1-prop; treatment weights = 1/prop
+diabetes_analysis <- diabetes_analysis %>%
+  mutate(weights = ifelse(medication == 0, 1/1-prop, 1/prop))
+
+diabetes_analysis2 <- diabetes_analysis2 %>%
+  mutate(weights = ifelse(medication == 0, 1/1-prop, 1/prop))
+
+#fit model 1 for readmission vs. no readmission using propensity weights
+model1_sens <- glm(readmit_yesno ~ medication + race + 
+                diagnosis + time_in_hospital + 
+                num_medications + dischargestatus + 
+                admissionsource + medication:race, 
+              family = "binomial", weights = weights,
+              data = diabetes_analysis)
+
+#summary(model1_sens)
+
+#fit model 2 for readmission <30 days vs. readmission >30 days using propensity weights
+model2_sens <- glm(readmit_30days ~ medication + race + 
+                diagnosis + time_in_hospital + 
+                num_medications + dischargestatus + 
+                admissionsource + medication:race, 
+              family = "binomial", weights = weights,
+              data = diabetes_analysis2)
+
+#summary(model2_sens)
+
+```
+
+
 
 ## Results
 
-**Model 1 Summary: Readmission vs. No Readmission**
+**Readmission vs. No Readmission Summaries**
 ```{r analysis 1, warning = F, echo = F}
 library(survival)
 
@@ -625,12 +722,85 @@ model1 <- clogit(as.numeric(readmit_yesno) ~ medication + race +
            #p = data1_chisq$prop_readmit)
 
 
-tidy(model1)
+#tidy(model1)
 #summary(model1)
 #jtools::summ(model1, confint = TRUE, exp = TRUE, vifs = TRUE)
+
+
+tidy_m1 <- tidy(model1) %>%
+  mutate(model = "Matched",
+         estimate = exp(estimate)) %>%
+  filter(term == "medication" | term == "race2" | term == "race3"| term == "race4")
+tidy_m1_sens <- tidy(model1_sens) %>%
+  mutate(model = "Weighted",
+         estimate = exp(estimate)) %>%
+  filter(term == "medication" | term == "race2" | term == "race3"| term == "race4")
+
+models1 <- rbind(tidy_m1, tidy_m1_sens) %>%
+  mutate(term = case_when(term == "medication" ~ "Medication: Metformin",
+                          term == "race2" ~ "Race: Black",
+                          term == "race3" ~ "Race: Hispanic",
+                          term == "race4" ~ "Race: Other"))
+models1 <- models1 %>%
+  select(model, term, estimate, std.error, statistic, p.value)
+
+
+#create container for datatable
+sketch = htmltools::withTags(table(
+  class = 'display',
+  thead(
+    tr(
+      th(rowspan = 1, 'Model'),
+      th(rowspan = 1, 'Predictor'),
+      th(rowspan = 1, 'Estimate'),
+      th(rowspan = 1, 'Standard Error'),
+      th(rowspan = 1, 'Statistic'),      
+      th(rowspan = 1, 'P-value'),      
+    ),
+  )
+))
+
+#interactive table for first model(s)
+datatable(data = models1,
+          options = list(dom = 't'),
+          container = sketch,
+          rownames = F) %>%
+  formatStyle("term", fontWeight = 'bold') %>%
+  formatStyle(6, color = styleInterval(c(0.05), c("green", "black"))) %>%
+  formatStyle(
+    'model',
+    color = styleEqual(
+      unique(models1$model), c('skyblue', 'lightcoral')
+    )) %>%
+  formatStyle("model", fontWeight = 'bold') %>%
+  formatRound(6, 5) %>%
+  formatRound(3:5, 3)
+
+
 ```
 
-**Model 2 Summary: Readmission <=30 vs. >30 days**
+---
+
+## Results
+
+**Readmission vs. No Readmission Coefficients** 
+
+```{r summary graphs 1, echo = F, warning = F, message=F}
+
+library(dotwhisker)
+
+dwplot(models1,
+       vline = geom_vline(
+           xintercept = 1,
+           colour = "grey60",
+           linetype = 2
+       ))
+```
+
+
+---
+
+**Readmission <=30 vs. >30 days Summaries**
 ``` {r analysis 2, echo = F, warning = F, message = F}
 #fit model 2 for readmission <30 days vs. readmission >30 days
 model2 <- clogit(as.numeric(readmit_30days) ~ medication + race + 
@@ -649,83 +819,8 @@ model2 <- clogit(as.numeric(readmit_30days) ~ medication + race +
 #chisq.test(x = data2_chisq$n,
            #p = data2_chisq$prop_readmit)
 
-tidy(model2)
+#tidy(model2)
 #jtools::summ(model2, confint = TRUE, exp = TRUE, vifs = TRUE)
-```
-
-
-```{r sensitivity, echo = F, warning = F}
-#create propensity weights; control weights = 1/1-prop; treatment weights = 1/prop
-diabetesfinal1 <- diabetesfinal1 %>%
-  mutate(weights = ifelse(medication == 0, 1/1-prop, 1/prop))
-
-diabetesfinal2 <- diabetesfinal2 %>%
-  mutate(weights = ifelse(medication == 0, 1/1-prop, 1/prop))
-
-#fit model 1 for readmission vs. no readmission using propensity weights
-model1_sens <- glm(readmit_yesno ~ medication + race + 
-                diagnosis + time_in_hospital + 
-                num_medications + dischargestatus + 
-                admissionsource + medication:race, 
-              family = "binomial", weights = weights,
-              data = diabetesfinal1)
-
-#summary(model1_sens)
-
-#fit model 2 for readmission <30 days vs. readmission >30 days using propensity weights
-model2_sens <- glm(readmit_30days ~ medication + race + 
-                diagnosis + time_in_hospital + 
-                num_medications + dischargestatus + 
-                admissionsource + medication:race, 
-              family = "binomial", weights = weights,
-              data = diabetesfinal2)
-
-#summary(model2_sens)
-
-```
-
----
-
-## Results
-
-**Model 1 Coefficients** 
-
-```{r summary graphs 1, echo = F, warning = F, message=F}
-library(ggstance)
-library(broom.mixed)
-library(dotwhisker)
-#jtools::plot_summs(model1, model1_sens, model.names = c("PS Matched", "PS Weighted"))
-
-tidy_m1 <- tidy(model1) %>%
-  mutate(model = "Matched",
-         estimate = exp(estimate)) %>%
-  filter(term == "medication" | term == "race2" | term == "race3"| term == "race4")
-tidy_m1_sens <- tidy(model1_sens) %>%
-  mutate(model = "Weighted",
-         estimate = exp(estimate)) %>%
-  filter(term == "medication" | term == "race2" | term == "race3"| term == "race4")
-
-models1 <- rbind(tidy_m1, tidy_m1_sens) %>%
-  mutate(term = case_when(term == "medication" ~ "Medication: Metformin",
-                          term == "race2" ~ "Race: Black",
-                          term == "race3" ~ "Race: Hispanic",
-                          term == "race4" ~ "Race: Other"))
-
-dwplot(models1,
-       vline = geom_vline(
-           xintercept = 1,
-           colour = "grey60",
-           linetype = 2
-       ))
-```
-
----
-
-## Results
-
-**Model 2 Coefficients** 
-
-```{r summary graphs 2, echo = F, warning = F, message=F}
 
 tidy_m2 <- tidy(model2) %>%
   mutate(model = "Matched",
@@ -743,6 +838,37 @@ models2 <- rbind(tidy_m2, tidy_m2_sens) %>%
                           term == "race2" ~ "Race: Black",
                           term == "race3" ~ "Race: Hispanic",
                           term == "race4" ~ "Race: Other"))
+
+models2 <- models2 %>%
+  select(model, term, estimate, std.error, statistic, p.value)
+
+#interactive table for first model(s)
+datatable(data = models2,
+          options = list(dom = 't'),
+          container = sketch,
+          rownames = F) %>%
+  formatStyle("term", fontWeight = 'bold') %>%
+  formatStyle(6, color = styleInterval(c(0.05), c("green", "black"))) %>%
+  formatStyle(
+    'model',
+    color = styleEqual(
+      unique(models1$model), c('skyblue', 'lightcoral')
+    )) %>%
+  formatStyle("model", fontWeight = 'bold') %>%
+  formatRound(6, 5) %>%
+  formatRound(3:5, 3)
+
+
+```
+
+
+---
+
+## Results
+
+**Readmission <=30 vs. >30 days Coefficients** 
+
+```{r summary graphs 2, echo = F, warning = F, message=F}
 
 dwplot(models2,
        vline = geom_vline(
@@ -767,7 +893,7 @@ dwplot(models2,
 
 - Heightened scale of coefficients and statistical significance may be due to larger sample size.
 
-- Concordant findings suggest that both procedure may approximate the same results.
+- Concordant findings suggest that both procedures may approximate the same results.
 
 ---
 
